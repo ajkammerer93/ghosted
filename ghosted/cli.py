@@ -140,7 +140,9 @@ def init() -> None:
 
 
 @app.command()
-def scan() -> None:
+def scan(
+    headed: bool = typer.Option(False, "--headed", help="Show browser window (requires display server)."),
+) -> None:
     """Scan data brokers for your personal information."""
     _require_vault()
     passphrase = _get_passphrase()
@@ -162,7 +164,7 @@ def scan() -> None:
     console.print(f"\nScanning [bold]{len(broker_list)}[/bold] broker(s)...\n")
 
     async def _run_scan():
-        engine = AutomationEngine(headless=False)
+        engine = AutomationEngine(headless=not headed)
         await engine.start()
         try:
             report = await scan_brokers(profile, broker_list, engine)
@@ -193,6 +195,7 @@ def scan() -> None:
 def remove(
     all_brokers: bool = typer.Option(False, "--all", help="Remove from all brokers where data was found."),
     broker: Optional[str] = typer.Option(None, "--broker", help="Remove from a specific broker by name."),
+    headed: bool = typer.Option(False, "--headed", help="Show browser window (requires display server)."),
 ) -> None:
     """Submit opt-out requests to data brokers."""
     _require_vault()
@@ -241,7 +244,7 @@ def remove(
     console.print(f"\nRemoving from [bold]{len(found_results)}[/bold] broker(s)...\n")
 
     async def _run_removals():
-        engine = AutomationEngine(headless=False)
+        engine = AutomationEngine(headless=not headed)
         await engine.start()
         try:
             report = await remove_from_brokers(profile, found_results, broker_list, engine)

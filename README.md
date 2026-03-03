@@ -17,6 +17,22 @@ pip install -e .
 playwright install chromium
 ```
 
+### Linux / WSL
+
+Chromium requires system libraries that may not be present on a minimal Linux or WSL install. Install them with:
+
+```bash
+sudo playwright install-deps chromium
+```
+
+Or manually:
+
+```bash
+sudo apt-get install -y libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+  libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
+  libgbm1 libpango-1.0-0 libcairo2 libasound2
+```
+
 ## Usage
 
 ```bash
