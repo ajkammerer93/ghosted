@@ -141,7 +141,7 @@ ghosted/
     captcha.py         # CAPTCHA detection helpers
 brokers/               # YAML broker configs (20 files)
 tests/
-  test_e2e.py          # 58 e2e tests
+  test_e2e.py          # 61 e2e tests
 ```
 
 ## License
