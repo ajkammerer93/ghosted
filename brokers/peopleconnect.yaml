@@ -1,0 +1,47 @@
+name: "PeopleConnect"
+url: "https://www.peopleconnect.us"
+opt_out_url: "https://suppression.peopleconnect.us"
+method: "suppression_portal"
+parent_company: "PeopleConnect, Inc."
+captcha: null
+requires_email_verification: true
+recommended_rescan_days: 180
+search:
+  url: "https://www.intelius.com/people-search/{{user.first_name}}-{{user.last_name}}/{{user.state}}"
+  result_selector: ".record-card"
+  name_selector: ".record-card-name"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: navigate
+    url: "https://suppression.peopleconnect.us"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: click
+    selector: "button[type='submit']"
+  - action: await_email
+    subject_pattern: "PeopleConnect Verification"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "suppression.peopleconnect.us/verify"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='dateOfBirth']"
+    value: "{{user.date_of_birth}}"
+  - action: click
+    selector: "button#search-records"
+  - action: wait_seconds
+    wait_seconds: 5
+  - action: click
+    selector: "input[type='checkbox'].select-all-records"
+  - action: select
+    selector: "select[name='desired_behavior']"
+    value: "Suppressed"
+  - action: click
+    selector: "button#save-suppression"
+notes: "Covers Intelius, TruthFinder, InstantCheckmate, US Search, Classmates.com, ZabaSearch, AnyWho, Addresses.com, PublicRecords.com, PeopleLookup, iSearch, PeopleFinder, AddressSearch.com. Requires date of birth for identity confirmation. Suppression takes up to 10 business days."

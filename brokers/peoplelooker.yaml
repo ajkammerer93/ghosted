@@ -1,0 +1,42 @@
+name: "PeopleLooker"
+url: "https://www.peoplelooker.com"
+opt_out_url: "https://www.peoplelooker.com/f/optout/search"
+method: "web_form"
+parent_company: null
+captcha: null
+requires_email_verification: true
+recommended_rescan_days: 30
+search:
+  url: "https://www.peoplelooker.com/f/optout/search"
+  result_selector: ".optout-result"
+  name_selector: ".optout-result-name"
+  no_results_indicator: "No records found"
+opt_out_steps:
+  - action: navigate
+    url: "https://www.peoplelooker.com/f/optout/search"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: select
+    selector: "select[name='state']"
+    value: "{{user.state}}"
+  - action: click
+    selector: "button[type='submit']"
+  - action: wait_seconds
+    wait_seconds: 5
+  - action: click
+    selector: ".optout-result a.opt-out-link"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: click
+    selector: "button#confirm-optout"
+  - action: await_email
+    subject_pattern: "PeopleLooker.*opt.out|removal"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "peoplelooker.com/.*optout/verify"
+notes: "Managed by BeenVerified. Opt-out from BeenVerified may also cover PeopleLooker. Results update within 24 hours."

@@ -1,0 +1,38 @@
+name: "Addresses.com"
+url: "https://www.addresses.com"
+opt_out_url: "https://www.addresses.com/optout.php"
+method: "web_form"
+parent_company: "PeopleConnect, Inc."
+captcha: "recaptcha_v2"
+requires_email_verification: true
+recommended_rescan_days: 60
+search:
+  url: "https://www.addresses.com/people/{{user.first_name}}+{{user.last_name}}/{{user.state}}/{{user.city}}"
+  result_selector: ".record-list .record"
+  name_selector: ".record .name"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: navigate
+    url: "https://www.addresses.com/optout.php"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='city']"
+    value: "{{user.city}}"
+  - action: select
+    selector: "select[name='state']"
+    value: "{{user.state}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button#remove-me"
+  - action: await_email
+    subject_pattern: "Addresses.com.*removal|opt.out"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "addresses.com/optout/confirm"
+notes: "Owned by PeopleConnect. Partners with Intelius. Also consider opting out via PeopleConnect Suppression Center. Removal takes 48-72 hours."

@@ -1,0 +1,40 @@
+name: "Nuwber"
+url: "https://nuwber.com"
+opt_out_url: "https://nuwber.com/removal/link"
+method: "web_form"
+parent_company: null
+captcha: null
+requires_email_verification: true
+recommended_rescan_days: 30
+search:
+  url: "https://nuwber.com/search?name={{user.first_name}}%20{{user.last_name}}&city={{user.city}}&state={{user.state}}"
+  result_selector: ".person-card"
+  name_selector: ".person-card .name"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: navigate
+    url: "https://nuwber.com/search?name={{user.first_name}}%20{{user.last_name}}&city={{user.city}}&state={{user.state}}"
+  - action: click
+    selector: ".person-card a"
+  - action: wait_seconds
+    wait_seconds: 2
+  - action: capture_url
+    type: "profile_url"
+  - action: navigate
+    url: "https://nuwber.com/removal/link"
+  - action: fill
+    selector: "input[name='url']"
+    value: "{{profile_url}}"
+  - action: click
+    selector: "button.opt-out-btn"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: click
+    selector: "button#confirm-request"
+  - action: await_email
+    subject_pattern: "Nuwber.*removal|confirm"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "nuwber.com/removal/confirm"
+notes: "Requires profile URL. Use a disposable email for the opt-out. Removal takes up to 48 hours."

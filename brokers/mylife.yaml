@@ -1,0 +1,18 @@
+name: "MyLife"
+url: "https://www.mylife.com"
+opt_out_url: "https://www.mylife.com/ccpa/index.pubview"
+method: "phone"
+parent_company: null
+phone_number: "888-704-1900"
+captcha: null
+requires_email_verification: false
+recommended_rescan_days: 90
+search:
+  url: "https://www.mylife.com/pub/name-search.pubview?firstName={{user.first_name}}&lastName={{user.last_name}}&city={{user.city}}&state={{user.state}}"
+  result_selector: ".results-list .result"
+  name_selector: ".result .name"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: manual_step
+    value: "Call MyLife at (888) 704-1900 (Mon-Fri 6am-5pm PST) and request removal of your personal information. Alternatively, email privacy@MyLife.com with your full name, city, state, and a request to delete your profile."
+notes: "Phone-based removal preferred but may not reach a live person. Email to privacy@MyLife.com may be more effective. Removal takes 1-2 weeks. Data likely to reappear."

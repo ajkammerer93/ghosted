@@ -1,0 +1,145 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: "Ghosted Broker Configuration"
+description: "Schema for data broker opt-out configuration files used by Ghosted."
+type: object
+required:
+  - name
+  - url
+  - opt_out_url
+  - method
+properties:
+  name:
+    type: string
+    description: "Human-readable name of the data broker."
+  url:
+    type: string
+    format: uri
+    description: "Primary website URL of the data broker."
+  opt_out_url:
+    type: string
+    format: uri
+    description: "Direct URL to the broker's opt-out/removal page."
+  method:
+    type: string
+    enum:
+      - web_form
+      - email
+      - phone
+      - suppression_portal
+    description: "Primary method for opting out of this broker."
+  parent_company:
+    type:
+      - string
+      - "null"
+    description: "Parent company name, if the broker is a subsidiary."
+  captcha:
+    type:
+      - string
+      - "null"
+    enum:
+      - recaptcha_v2
+      - recaptcha_v3
+      - hcaptcha
+      - cloudflare_turnstile
+      - null
+    description: "Type of CAPTCHA used on the opt-out form, if any."
+  requires_email_verification:
+    type: boolean
+    default: false
+    description: "Whether the opt-out process requires clicking an email confirmation link."
+  recommended_rescan_days:
+    type: integer
+    minimum: 1
+    default: 30
+    description: "Recommended number of days between re-scans to check for data reappearance."
+  search:
+    type:
+      - object
+      - "null"
+    description: "Configuration for searching the broker's database for user records."
+    required:
+      - url
+      - result_selector
+      - name_selector
+    properties:
+      url:
+        type: string
+        description: "Search URL template. Supports {{user.*}} placeholders."
+      result_selector:
+        type: string
+        description: "CSS selector for individual search result elements."
+      name_selector:
+        type: string
+        description: "CSS selector for the name text within a search result."
+      no_results_indicator:
+        type:
+          - string
+          - "null"
+        description: "Text that appears on the page when no results are found."
+    additionalProperties: false
+  opt_out_steps:
+    type: array
+    description: "Ordered list of steps to execute the opt-out flow."
+    items:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - navigate
+            - fill
+            - click
+            - select
+            - solve_captcha
+            - await_email
+            - click_email_link
+            - capture_url
+            - wait_seconds
+            - manual_step
+            - send_email
+          description: "The type of action to perform in this step."
+        url:
+          type: string
+          description: "URL to navigate to (for 'navigate' action)."
+        selector:
+          type: string
+          description: "CSS selector for the target element (for 'fill', 'click', 'select' actions)."
+        value:
+          type: string
+          description: "Value to fill or select. Supports {{user.*}} and {{profile_url}} placeholders."
+        type:
+          type: string
+          description: "Sub-type for the action (e.g., CAPTCHA type for 'solve_captcha', URL capture type for 'capture_url')."
+        subject_pattern:
+          type: string
+          description: "Regex pattern to match email subject line (for 'await_email' action)."
+        link_pattern:
+          type: string
+          description: "Regex pattern to match the verification link URL (for 'click_email_link' action)."
+        timeout_minutes:
+          type: integer
+          minimum: 1
+          description: "Maximum wait time in minutes (for 'await_email' action)."
+        wait_seconds:
+          type: number
+          minimum: 0
+          description: "Number of seconds to wait (for 'wait_seconds' action)."
+      additionalProperties: false
+  email_template:
+    type:
+      - string
+      - "null"
+    description: "Name of the legal email template to use (for 'email' method brokers)."
+  phone_number:
+    type:
+      - string
+      - "null"
+    description: "Phone number to call for opt-out (for 'phone' method brokers)."
+  notes:
+    type:
+      - string
+      - "null"
+    description: "Additional notes about the broker's opt-out process."
+additionalProperties: false

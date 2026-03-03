@@ -1,0 +1,48 @@
+name: "Acxiom"
+url: "https://www.acxiom.com"
+opt_out_url: "https://isapps.acxiom.com/optout/optout.aspx"
+method: "web_form"
+parent_company: "Acxiom LLC"
+phone_number: "877-774-2094"
+captcha: "recaptcha_v2"
+requires_email_verification: true
+recommended_rescan_days: 90
+search:
+  url: "https://isapps.acxiom.com/optout/optout.aspx"
+  result_selector: ".opt-out-form"
+  name_selector: ".opt-out-form"
+  no_results_indicator: null
+opt_out_steps:
+  - action: navigate
+    url: "https://isapps.acxiom.com/optout/optout.aspx"
+  - action: click
+    selector: "input[type='checkbox'][name='mailingAddresses']"
+  - action: click
+    selector: "input[type='checkbox'][name='phoneNumbers']"
+  - action: click
+    selector: "input[type='checkbox'][name='emailAddresses']"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: fill
+    selector: "input[name='phone']"
+    value: "{{user.phone}}"
+  - action: fill
+    selector: "input[name='address']"
+    value: "{{user.city}}, {{user.state}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button[type='submit']"
+  - action: await_email
+    subject_pattern: "Acxiom.*opt.out|confirmation"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "isapps.acxiom.com/optout/confirm"
+notes: "Major data aggregator. Opt-out takes about 2 weeks. Does not retroactively remove data already shared with marketers. Can also call (877) 774-2094."

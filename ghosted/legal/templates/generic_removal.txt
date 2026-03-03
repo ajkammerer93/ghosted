@@ -1,0 +1,43 @@
+Subject: Personal Data Removal Request
+
+Dear {{broker.name}} Privacy Team,
+
+I am writing to formally request the removal of all personal information pertaining to me from your database, website, and any associated services or platforms.
+
+I have identified that your organization holds and publicly displays personal data about me, which I did not consent to being collected, aggregated, or published. I request that you immediately remove the following information and any related records:
+
+  - Full name: {{user.first_name}} {{user.last_name}}
+  - Email address: {{user.email}}
+  - City and state: {{user.city}}, {{user.state}}
+  - Phone number: {{user.phone}}
+  - Any associated addresses, relatives, employment history, background information, social media profiles, or other personal data
+
+Specifically, I request that you:
+
+  1. Remove all profiles, listings, and records containing my personal information from your publicly accessible website and databases.
+  2. Cease any further collection, aggregation, or publication of my personal data.
+  3. Refrain from selling, licensing, or sharing my personal information with any third parties.
+  4. Confirm in writing that the above actions have been completed.
+
+Please be aware that multiple jurisdictions have enacted data protection and privacy legislation granting individuals the right to request deletion of their personal data, including but not limited to:
+
+  - The California Consumer Privacy Act (CCPA/CPRA)
+  - The General Data Protection Regulation (GDPR)
+  - The Virginia Consumer Data Protection Act (VCDPA)
+  - The Colorado Privacy Act (CPA)
+  - The Connecticut Data Privacy Act (CTDPA)
+  - The Utah Consumer Privacy Act (UCPA)
+  - The Texas Data Privacy and Security Act (TDPSA)
+  - The Oregon Consumer Privacy Act (OCPA)
+
+I expect a response confirming removal within thirty (30) calendar days of receiving this request. Failure to act on this request may result in formal complaints to the appropriate regulatory authorities.
+
+I verify my identity as {{user.first_name}} {{user.last_name}}, reachable at {{user.email}}.
+
+Please direct any correspondence regarding this request to: {{user.email}}
+
+Thank you for your prompt attention to this matter.
+
+Sincerely,
+{{user.first_name}} {{user.last_name}}
+{{user.city}}, {{user.state}}

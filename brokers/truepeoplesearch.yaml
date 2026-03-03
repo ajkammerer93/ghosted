@@ -1,0 +1,39 @@
+name: "TruePeopleSearch"
+url: "https://www.truepeoplesearch.com"
+opt_out_url: "https://www.truepeoplesearch.com/removal"
+method: "web_form"
+parent_company: null
+captcha: null
+requires_email_verification: true
+recommended_rescan_days: 30
+search:
+  url: "https://www.truepeoplesearch.com/results?name={{user.first_name}}%20{{user.last_name}}&citystatezip={{user.city}}%20{{user.state}}"
+  result_selector: ".card-summary"
+  name_selector: ".card-summary h2 a"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: navigate
+    url: "https://www.truepeoplesearch.com/removal"
+  - action: fill
+    selector: "input[name='name']"
+    value: "{{user.first_name}} {{user.last_name}}"
+  - action: fill
+    selector: "input[name='citystatezip']"
+    value: "{{user.city}}, {{user.state}}"
+  - action: click
+    selector: "button[type='submit']"
+  - action: wait_seconds
+    wait_seconds: 3
+  - action: click
+    selector: ".record-remove-btn"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: click
+    selector: "button#confirm-removal"
+  - action: await_email
+    subject_pattern: "TruePeopleSearch Removal"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "truepeoplesearch.com/removal/verify"
+notes: "Data may reappear from new public records. Periodic re-opt-out recommended. Processing takes up to 72 hours."

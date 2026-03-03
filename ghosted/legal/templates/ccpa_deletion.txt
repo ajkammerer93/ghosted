@@ -1,0 +1,37 @@
+Subject: California Consumer Privacy Act - Data Deletion Request
+
+Dear {{broker.name}} Privacy Team,
+
+I am a California resident writing to exercise my rights under the California Consumer Privacy Act (CCPA), Cal. Civ. Code §§ 1798.100–1798.199.100, and the California Privacy Rights Act (CPRA) amendments thereto.
+
+Pursuant to Cal. Civ. Code § 1798.105, I hereby request that you delete all personal information you have collected about me, as defined under Cal. Civ. Code § 1798.140(v). This request applies to all records, profiles, data points, and derived inferences held by your organization, its subsidiaries, service providers, and any third parties with whom you have shared my data.
+
+The personal information I request you delete includes, but is not limited to:
+
+  - Full name: {{user.first_name}} {{user.last_name}}
+  - Email address: {{user.email}}
+  - City and state: {{user.city}}, {{user.state}}
+  - Phone number: {{user.phone}}
+  - Any associated addresses, relatives, employment records, social media profiles, background information, or other personal data
+
+I also invoke my right under Cal. Civ. Code § 1798.120 to opt out of the sale or sharing of my personal information, effective immediately and going forward.
+
+Please confirm the following within forty-five (45) calendar days of receiving this request, as required by Cal. Civ. Code § 1798.105(b):
+
+  1. That you have deleted all personal information about me in your possession.
+  2. That you have directed any service providers or third parties who received my personal information to delete it as well.
+  3. That you have ceased selling or sharing my personal information.
+
+If you are unable to comply with this deletion request, please provide a written explanation identifying the specific statutory exception under Cal. Civ. Code § 1798.105(d) upon which you rely, the categories of personal information retained, and the purpose for retention.
+
+Under Cal. Civ. Code § 1798.150, I reserve the right to pursue statutory damages of $100–$750 per consumer per incident, or actual damages, whichever is greater, in the event of any unauthorized disclosure or failure to maintain reasonable security procedures for my personal information.
+
+I am the individual to whom this data pertains and I am making this request on my own behalf. I verify my identity as {{user.first_name}} {{user.last_name}}, reachable at {{user.email}}.
+
+Please direct any correspondence regarding this request to: {{user.email}}
+
+Thank you for your prompt attention to this matter.
+
+Sincerely,
+{{user.first_name}} {{user.last_name}}
+{{user.city}}, {{user.state}}

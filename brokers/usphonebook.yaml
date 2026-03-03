@@ -1,0 +1,40 @@
+name: "USPhoneBook"
+url: "https://www.usphonebook.com"
+opt_out_url: "https://www.usphonebook.com/opt-out"
+method: "web_form"
+parent_company: null
+captcha: "recaptcha_v2"
+requires_email_verification: true
+recommended_rescan_days: 30
+search:
+  url: "https://www.usphonebook.com/{{user.first_name}}-{{user.last_name}}/{{user.state}}"
+  result_selector: ".result-list .card"
+  name_selector: ".card .name"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: navigate
+    url: "https://www.usphonebook.com/opt-out"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button[type='submit']"
+  - action: wait_seconds
+    wait_seconds: 3
+  - action: fill
+    selector: "input[name='phone']"
+    value: "{{user.phone}}"
+  - action: click
+    selector: "button#search-records"
+  - action: wait_seconds
+    wait_seconds: 3
+  - action: click
+    selector: "button.remove-record"
+  - action: await_email
+    subject_pattern: "USPhoneBook.*opt.out|removal"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "usphonebook.com/opt-out/confirm"
+notes: "Data removal takes up to 72 hours. Data may reappear as databases refresh. Can also call (888) 747-4095."

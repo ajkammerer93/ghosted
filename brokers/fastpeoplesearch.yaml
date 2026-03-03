@@ -1,0 +1,47 @@
+name: "FastPeopleSearch"
+url: "https://www.fastpeoplesearch.com"
+opt_out_url: "https://www.fastpeoplesearch.com/removal"
+method: "web_form"
+parent_company: null
+captcha: "recaptcha_v2"
+requires_email_verification: true
+recommended_rescan_days: 30
+search:
+  url: "https://www.fastpeoplesearch.com/name/{{user.first_name}}-{{user.last_name}}_{{user.city}}-{{user.state}}"
+  result_selector: ".card-block"
+  name_selector: ".card-block .card-title a"
+  no_results_indicator: "did not return any results"
+opt_out_steps:
+  - action: navigate
+    url: "https://www.fastpeoplesearch.com/removal"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: click
+    selector: "input[type='checkbox'][name='confirm']"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='city']"
+    value: "{{user.city}}"
+  - action: select
+    selector: "select[name='state']"
+    value: "{{user.state}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button[type='submit']"
+  - action: wait_seconds
+    wait_seconds: 3
+  - action: click
+    selector: "a.remove-record-link"
+  - action: await_email
+    subject_pattern: "FastPeopleSearch Removal"
+    timeout_minutes: 30
+  - action: click_email_link
+    link_pattern: "fastpeoplesearch.com/removal/confirm"
+notes: "Limit of 5 opt-out requests per email. Updates automatically so data may reappear. Processing takes up to 72 hours."

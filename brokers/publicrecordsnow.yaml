@@ -1,0 +1,33 @@
+name: "PublicRecordsNow"
+url: "https://www.publicrecordsnow.com"
+opt_out_url: "https://www.publicrecordsnow.com/static/view/optout/"
+method: "web_form"
+parent_company: null
+captcha: "recaptcha_v2"
+requires_email_verification: false
+recommended_rescan_days: 60
+search:
+  url: "https://www.publicrecordsnow.com/name/{{user.first_name}}-{{user.last_name}}/{{user.state}}"
+  result_selector: ".record-item"
+  name_selector: ".record-item .name"
+  no_results_indicator: "No records found"
+opt_out_steps:
+  - action: navigate
+    url: "https://www.publicrecordsnow.com/static/view/optout/"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='city']"
+    value: "{{user.city}}"
+  - action: select
+    selector: "select[name='state']"
+    value: "{{user.state}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button[type='submit']"
+notes: "Listing removed immediately after successful opt-out request."

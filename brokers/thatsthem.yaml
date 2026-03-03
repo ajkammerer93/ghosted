@@ -1,0 +1,40 @@
+name: "ThatsThem"
+url: "https://thatsthem.com"
+opt_out_url: "https://thatsthem.com/optout"
+method: "web_form"
+parent_company: null
+captcha: null
+requires_email_verification: false
+recommended_rescan_days: 60
+search:
+  url: "https://thatsthem.com/name/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
+  result_selector: ".ThatsThem-people-record"
+  name_selector: ".ThatsThem-people-record .name"
+  no_results_indicator: "Sorry, we couldn't find"
+opt_out_steps:
+  - action: navigate
+    url: "https://thatsthem.com/optout"
+  - action: fill
+    selector: "input[name='first_name']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='last_name']"
+    value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: fill
+    selector: "input[name='street_address']"
+    value: "{{user.city}}, {{user.state}}"
+  - action: fill
+    selector: "input[name='state']"
+    value: "{{user.state}}"
+  - action: fill
+    selector: "input[name='city']"
+    value: "{{user.city}}"
+  - action: fill
+    selector: "input[name='phone']"
+    value: "{{user.phone}}"
+  - action: click
+    selector: "button[type='submit']"
+notes: "No CAPTCHA or email verification required. Processing takes 7-14 business days. Can also email optout@thatsthem.com."

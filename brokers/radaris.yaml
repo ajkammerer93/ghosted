@@ -1,0 +1,24 @@
+name: "Radaris"
+url: "https://radaris.com"
+opt_out_url: "https://radaris.com/control-privacy"
+method: "email"
+parent_company: null
+captcha: null
+requires_email_verification: true
+recommended_rescan_days: 60
+email_template: "ccpa_deletion"
+search:
+  url: "https://radaris.com/p/{{user.first_name}}/{{user.last_name}}/"
+  result_selector: ".card-result"
+  name_selector: ".card-result .name"
+  no_results_indicator: "No results found"
+opt_out_steps:
+  - action: send_email
+    value: "customer-service@radaris.com"
+    type: "ccpa_deletion"
+  - action: await_email
+    subject_pattern: "Radaris.*removal|opt.out"
+    timeout_minutes: 60
+  - action: click_email_link
+    link_pattern: "radaris.com/.*confirm"
+notes: "Email removal preferred. Can also use web form at radaris.com/control-privacy. Verification email may take 30+ minutes. Results update within 24 hours after confirmation."

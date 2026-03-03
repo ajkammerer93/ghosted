@@ -1,0 +1,36 @@
+Subject: GDPR Article 17 - Right to Erasure Request
+
+Dear {{broker.name}} Data Protection Officer,
+
+I am writing to exercise my right to erasure ("right to be forgotten") under Article 17 of the General Data Protection Regulation (EU) 2016/679 (GDPR), as supplemented by applicable national data protection legislation.
+
+I request that you erase all personal data you hold relating to me without undue delay. Pursuant to Article 17(1), this request is made on the following grounds:
+
+  (a) The personal data is no longer necessary in relation to the purposes for which it was collected or otherwise processed (Article 17(1)(a));
+  (b) I withdraw my consent on which the processing is based, where no other legal ground for processing exists (Article 17(1)(b));
+  (c) I object to the processing pursuant to Article 21(1), and there are no overriding legitimate grounds for the processing (Article 17(1)(c));
+  (d) The personal data has been unlawfully processed (Article 17(1)(d)).
+
+The personal data I request you erase includes, but is not limited to:
+
+  - Full name: {{user.first_name}} {{user.last_name}}
+  - Email address: {{user.email}}
+  - City/Region: {{user.city}}, {{user.state}}
+  - Phone number: {{user.phone}}
+  - Any associated addresses, profiles, background data, inferred data, behavioral data, or other personal data as defined under Article 4(1) GDPR
+
+In accordance with Article 17(2), where you have made my personal data public, I request that you take reasonable steps to inform other controllers processing the data that I have requested erasure of any links to, or copies or replications of, that personal data.
+
+Under Article 12(3) GDPR, you are required to respond to this request without undue delay and in any event within one (1) calendar month of receipt. If you require an extension of up to two additional months due to the complexity of the request, you must inform me within the first month, providing reasons for the delay (Article 12(3)).
+
+If you decline to act on this request, you must inform me without delay and at the latest within one month, of the reasons for not taking action and of the possibility of lodging a complaint with a supervisory authority and seeking a judicial remedy (Article 12(4)).
+
+I verify my identity as {{user.first_name}} {{user.last_name}}, reachable at {{user.email}}.
+
+Please direct any correspondence regarding this request to: {{user.email}}
+
+Non-compliance with this request may result in a complaint to the relevant supervisory authority under Article 77 GDPR, and I reserve the right to an effective judicial remedy under Article 79 GDPR.
+
+Sincerely,
+{{user.first_name}} {{user.last_name}}
+{{user.city}}, {{user.state}}
