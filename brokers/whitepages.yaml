@@ -25,13 +25,9 @@ opt_out_steps:
     type: "profile_url"
   - action: navigate
     url: "https://www.whitepages.com/suppression-requests"
-  - action: fill
-    selector: "input[name='listing_url']"
-    value: "{{profile_url}}"
-  - action: click
-    selector: "button[type='submit']"
   - action: wait_seconds
-    wait_seconds: 5
+    wait_seconds: 3
+  - action: dismiss_dialogs
   - action: manual_step
-    value: "Answer the phone verification call from Whitepages. Enter the verification code shown on screen when prompted."
-notes: "Uses Cloudflare Turnstile protection. JS-rendered — requires full browser rendering (networkidle). WebFetch blocked by Cloudflare. Requires phone verification via automated call. Removal processed within 24 hours. Selectors .serp-card and .serp-card-name are historically used class names. Whitepages also provides JSON-LD structured data on profile pages. Must verify selectors with live Playwright session from US IP."
+    value: "Paste your profile URL into the form, click Next, select a removal reason, then complete the phone verification call. Your profile URL: {{profile_url}}"
+notes: "Requires phone verification via automated call — cannot be fully automated. The opt-out form asks for the profile listing URL, then requires selecting a removal reason and verifying identity via phone call. Removal processed within 24 hours. Can also email support@whitepages.com with profile URL."

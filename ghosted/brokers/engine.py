@@ -306,7 +306,8 @@ class AutomationEngine:
                 await asyncio.get_event_loop().run_in_executor(None, input)
 
             case "manual_step":
-                raise _ManualRequired(step.value or "Manual intervention required")
+                msg = self._substitute_vars(step.value or "Manual intervention required", profile, profile_url)
+                raise _ManualRequired(msg)
 
             case "await_email" | "click_email_link":
                 raise _AwaitingVerification()
