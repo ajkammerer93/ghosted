@@ -4,7 +4,7 @@ Open-source personal data removal tool. Scan, remove, and monitor your personal 
 
 ## Features
 
-- **Scan** — Search 20 data broker sites for your personal information
+- **Scan** — Search 20 data broker sites for your personal information with honest status classification (Found, Clear, Blocked, Unknown, Error)
 - **Remove** — Automate opt-out requests via web forms and legal demand emails
 - **Multi-profile** — Manage removals for yourself, spouse, family members
 - **Stealth mode** — Anti-detection browser fingerprinting to bypass basic bot checks
@@ -88,7 +88,7 @@ Your personal information is stored in an encrypted local vault (`~/.ghosted/pro
 
 ### Anti-detection
 
-The browser engine uses playwright-stealth to patch common automation fingerprints, randomized viewports and user agents, and anti-detection launch arguments. This bypasses basic bot checks but not advanced protections like Cloudflare Turnstile — brokers behind Cloudflare will typically fail during automated scans.
+The browser engine uses playwright-stealth to patch common automation fingerprints, randomized viewports and user agents, and anti-detection launch arguments. This bypasses basic bot checks but not advanced protections like Cloudflare Turnstile — 11 of 20 brokers are Cloudflare-protected and will show "Blocked" during automated scans. The scan engine detects Cloudflare challenge pages, CAPTCHA walls, and HTTP error codes to classify results honestly rather than reporting false "clear" results.
 
 ### CAPTCHA handling
 
@@ -98,7 +98,7 @@ Some brokers require CAPTCHAs during opt-out. In headed mode, the engine pauses 
 
 20 data brokers configured, including Spokeo, Whitepages, BeenVerified, TruePeopleSearch, FastPeopleSearch, PeopleConnect (Intelius/TruthFinder/InstantCheckmate/USSearch), Radaris, Nuwber, VeriPages, and more.
 
-Not all brokers will return results — many are behind Cloudflare or require US-based IP addresses. Run `ghosted brokers` to see the full list.
+Not all brokers will return results — 11 are behind Cloudflare and will show "Blocked." Brokers with `cloudflare: true` in their YAML are known to be Cloudflare-protected. Run `ghosted brokers` to see the full list.
 
 ## Adding Brokers
 
@@ -106,6 +106,7 @@ Broker definitions are YAML files in the `brokers/` directory. Each config defin
 
 Key fields:
 - `enabled: false` — disable a broker without removing its config
+- `cloudflare: true` — mark a broker as Cloudflare-protected (scans will report "Blocked" instead of false "Clear")
 - `search` — how to find the user on the site (URL template + CSS selectors)
 - `opt_out_steps` — sequence of actions: navigate, fill, click, wait_seconds, capture_url, dismiss_dialogs, solve_captcha, manual_step, await_email, click_email_link
 
@@ -134,7 +135,7 @@ ghosted/
     captcha.py         # CAPTCHA detection helpers
 brokers/               # YAML broker configs (20 files)
 tests/
-  test_e2e.py          # 51 e2e tests
+  test_e2e.py          # 58 e2e tests
 ```
 
 ## License
