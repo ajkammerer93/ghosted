@@ -8,9 +8,9 @@ requires_email_verification: true
 recommended_rescan_days: 60
 search:
   url: "https://www.addresses.com/people/{{user.first_name}}-{{user.last_name}}/{{user.state}}"
-  result_selector: ".content-section"
-  name_selector: ".content-section .content-text"
-  no_results_indicator: "No results found"
+  result_selector: "a[href*='/4:']"
+  name_selector: "a[href*='/4:']"
+  no_results_indicator: "Found 0 Results"
 opt_out_steps:
   - action: navigate
     url: "https://www.addresses.com/optout.php"

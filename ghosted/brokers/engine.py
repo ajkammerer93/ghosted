@@ -3,6 +3,7 @@
 import asyncio
 import random
 from datetime import datetime
+from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from playwright_stealth import Stealth
@@ -110,21 +111,24 @@ class AutomationEngine:
         page: Page = await self._context.new_page()
         try:
             search_url = self._substitute_vars(config.search.url, profile)
-            response = await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
 
-            http_status = response.status if response else None
-            page_title = await page.title()
-
-            # Check HTTP status for obvious blocks/errors
-            if http_status and http_status == 403:
+            try:
+                response = await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+            except Exception as goto_err:
+                # Navigation timeout — page never finished loading (e.g. CAPTCHA blocking)
+                # Return BLOCKED with the search URL as profile_url since it may be valid
                 return ScanResult(
                     broker_name=config.name,
                     status=ScanStatus.BLOCKED,
                     found=False,
-                    error=f"HTTP {http_status} Forbidden",
-                    page_title=page_title,
-                    http_status=http_status,
+                    error=f"Navigation timeout: {search_url}",
+                    profile_url=search_url,
                 )
+
+            http_status = response.status if response else None
+            page_title = await page.title()
+
+            # 404 and 5xx are never Cloudflare challenges — fail immediately
             if http_status and http_status == 404:
                 return ScanResult(
                     broker_name=config.name,
@@ -144,13 +148,30 @@ class AutomationEngine:
                     http_status=http_status,
                 )
 
-            # Detect Cloudflare challenge pages
+            # Check for Cloudflare challenge — 403s are often CF challenges that
+            # auto-solve in headed mode, so detect CF before returning BLOCKED
             if await self._detect_cloudflare(page):
+                resolved = await self._wait_for_cloudflare_resolution(page)
+                if not resolved:
+                    return ScanResult(
+                        broker_name=config.name,
+                        status=ScanStatus.BLOCKED,
+                        found=False,
+                        error="Cloudflare protection detected",
+                        page_title=page_title,
+                        http_status=http_status,
+                    )
+                # Challenge resolved — update page state and continue
+                page_title = await page.title()
+                http_status = 200
+
+            # Non-CF 403 (IP ban, auth required, etc.)
+            if http_status and http_status == 403:
                 return ScanResult(
                     broker_name=config.name,
                     status=ScanStatus.BLOCKED,
                     found=False,
-                    error="Cloudflare protection detected",
+                    error=f"HTTP {http_status} Forbidden",
                     page_title=page_title,
                     http_status=http_status,
                 )
@@ -206,19 +227,7 @@ class AutomationEngine:
             # Check for result matches
             results = await page.query_selector_all(config.search.result_selector)
             if results:
-                # Try to grab the first result's link
-                profile_url = None
-                first = results[0]
-                # Check if the matched element itself is a link
-                tag = await first.evaluate("el => el.tagName.toLowerCase()")
-                if tag == "a":
-                    href = await first.get_attribute("href")
-                else:
-                    link = await first.query_selector("a")
-                    href = await link.get_attribute("href") if link else None
-                if href:
-                    from urllib.parse import urljoin
-                    profile_url = urljoin(page.url, href)
+                profile_url = await self._extract_profile_url(results[0], page)
 
                 return ScanResult(
                     broker_name=config.name,
@@ -229,16 +238,8 @@ class AutomationEngine:
                     http_status=http_status,
                 )
 
-            # Nothing matched — classify based on cloudflare flag
-            if config.cloudflare:
-                return ScanResult(
-                    broker_name=config.name,
-                    status=ScanStatus.BLOCKED,
-                    found=False,
-                    error="Known Cloudflare-protected broker, no selectors matched",
-                    page_title=page_title,
-                    http_status=http_status,
-                )
+            # Dump page snapshot for debugging selector mismatches
+            await self._dump_debug_snapshot(config.name, page)
 
             return ScanResult(
                 broker_name=config.name,
@@ -261,7 +262,7 @@ class AutomationEngine:
     async def _detect_cloudflare(self, page: Page) -> bool:
         """Detect Cloudflare challenge/interstitial pages."""
         title = (await page.title()).lower()
-        if "just a moment" in title:
+        if any(phrase in title for phrase in ("just a moment", "attention required", "security challenge", "managed challenge")):
             return True
 
         cf_indicators = [
@@ -289,6 +290,33 @@ class AutomationEngine:
         for selector in captcha_selectors:
             if await page.query_selector(selector):
                 return True
+        return False
+
+    async def _wait_for_cloudflare_resolution(self, page: Page, timeout: int = 10000) -> bool:
+        """Wait briefly for a Cloudflare challenge to auto-resolve.
+
+        Cloudflare Turnstile detects CDP-controlled browsers at the protocol
+        level, so human interaction can't solve it through Playwright. We just
+        wait briefly in case the challenge auto-resolves (rare), then give up.
+        """
+        elapsed = 0
+        interval = 1000
+        while elapsed < timeout:
+            try:
+                await page.wait_for_timeout(interval)
+            except Exception:
+                return False
+            elapsed += interval
+            try:
+                if not await self._detect_cloudflare(page):
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+                    return True
+            except Exception:
+                # Page was closed during the wait
+                return False
         return False
 
     async def execute_removal(
@@ -347,6 +375,46 @@ class AutomationEngine:
             )
         finally:
             await page.close()
+
+    async def _extract_profile_url(self, element, page: Page) -> str:
+        """Extract the best profile URL from a result element.
+
+        Tries: the element itself if it's a link, then child links
+        (skipping generic/utility links), then falls back to page URL.
+        """
+        from urllib.parse import urljoin
+
+        # If the element itself is a link, use it
+        tag = await element.evaluate("el => el.tagName.toLowerCase()")
+        if tag == "a":
+            href = await element.get_attribute("href")
+            if href and not href.startswith("/4:"):
+                return urljoin(page.url, href)
+
+        # Find all child links and pick the best one
+        links = await element.query_selector_all("a[href]")
+        skip_patterns = ["/contact", "/feedback", "/help", "/faq", "/redirect", "javascript:"]
+        for link in links:
+            href = await link.get_attribute("href")
+            if not href or href.startswith("/4:"):
+                continue
+            if any(pat in href.lower() for pat in skip_patterns):
+                continue
+            return urljoin(page.url, href)
+
+        return page.url
+
+    async def _dump_debug_snapshot(self, broker_name: str, page: Page) -> None:
+        """Save page HTML to ~/.ghosted/debug/ for selector debugging."""
+        try:
+            debug_dir = Path.home() / ".ghosted" / "debug"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            safe_name = broker_name.lower().replace(" ", "_").replace(".", "_")
+            html = await page.content()
+            snapshot_path = debug_dir / f"{safe_name}.html"
+            snapshot_path.write_text(html, encoding="utf-8")
+        except Exception:
+            pass  # Debug snapshots are best-effort
 
     async def _dismiss_dialogs(self, page: Page) -> None:
         """Try to dismiss common overlay dialogs (TOS, cookie consent, etc.)."""

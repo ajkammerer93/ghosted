@@ -8,8 +8,8 @@ requires_email_verification: false
 recommended_rescan_days: 60
 search:
   url: "https://thatsthem.com/name/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
-  result_selector: ".ThatsThem-people-record"
-  name_selector: ".ThatsThem-people-record .name"
+  result_selector: "div.record[id^='r']"
+  name_selector: "div.record[id^='r'] a[href*='/name/']"
   no_results_indicator: "Sorry, we couldn't find"
 opt_out_steps:
   - action: navigate
@@ -39,4 +39,4 @@ opt_out_steps:
     type: "custom"
   - action: click
     selector: "button[type='submit']"
-notes: "CAPTCHA challenge on both search and opt-out pages (custom 'Quick Humanity Check' with form id='challenge' and validate() JS function). Opt-out flow per Optery guide: search name+city+state → copy record details → scroll to 'Optout' link → paste info into fields → complete CAPTCHA → Submit. If multiple records appear, repeat for each. Search results show name, address, and phone for each record. Selectors (.ThatsThem-people-record) are plausible ThatsThem-prefixed class names but unverifiable via WebFetch due to CAPTCHA wall. Processing takes 7-14 business days. Alternative: email optout@thatsthem.com. Must verify selectors with live Playwright session from US IP."
+notes: "CAPTCHA wall on search page causes navigation timeout (custom 'Quick Humanity Check'). In headed mode, CAPTCHA auto-solves and page loads. Results use div.record with sequential ids (r0, r1, etc.) containing .card wrappers. Name links follow /name/First-Last pattern. Opt-out flow: fill name/email/address fields + custom CAPTCHA + submit. Processing takes 7-14 business days. Alternative: email optout@thatsthem.com."

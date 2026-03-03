@@ -33,7 +33,7 @@ async def scan_brokers(
     report = ScanReport(
         scan_id=uuid.uuid4().hex[:12],
         started_at=datetime.now(),
-        total_brokers=len(brokers),
+        total_brokers=total,
     )
 
     for i, config in enumerate(scannable):
