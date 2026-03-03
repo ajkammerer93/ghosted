@@ -5,6 +5,7 @@ import random
 from datetime import datetime
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright_stealth import Stealth
 
 from ghosted.models import (
     BrokerConfig,
@@ -15,27 +16,67 @@ from ghosted.models import (
     UserProfile,
 )
 
+STEALTH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+]
+
+COMMON_VIEWPORTS = [
+    {"width": 1366, "height": 768},
+    {"width": 1536, "height": 864},
+    {"width": 1920, "height": 1080},
+    {"width": 1440, "height": 900},
+]
+
+USER_AGENTS = [
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+]
+
 
 class AutomationEngine:
     """Drives browser automation for searching and opting out of data brokers."""
 
     def __init__(self, headless: bool = False):
         self.headless = headless
+        self._stealth = Stealth()
+        self._playwright_ctx = None
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
 
     async def start(self) -> None:
-        """Launch the Playwright browser."""
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=self.headless)
+        """Launch the Playwright browser with stealth patches."""
+        self._playwright_ctx = self._stealth.use_async(async_playwright())
+        self._playwright = await self._playwright_ctx.__aenter__()
+        viewport = random.choice(COMMON_VIEWPORTS)
+        self._browser = await self._playwright.chromium.launch(
+            headless=self.headless,
+            args=STEALTH_ARGS,
+        )
         self._context = await self._browser.new_context(
             ignore_https_errors=True,
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
+            viewport=viewport,
+            screen=viewport,
+            user_agent=random.choice(USER_AGENTS),
+            locale="en-US",
+            timezone_id="America/New_York",
+            color_scheme="light",
         )
 
     async def stop(self) -> None:
@@ -44,11 +85,12 @@ class AutomationEngine:
             await self._context.close()
         if self._browser:
             await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        if self._playwright_ctx:
+            await self._playwright_ctx.__aexit__(None, None, None)
         self._context = None
         self._browser = None
         self._playwright = None
+        self._playwright_ctx = None
 
     async def search_broker(self, config: BrokerConfig, profile: UserProfile) -> ScanResult:
         """Search a broker for the user's data.
@@ -159,6 +201,15 @@ class AutomationEngine:
                 method=config.method,
                 submitted_at=datetime.now(),
             )
+        except _ManualRequired as e:
+            return RemovalRequest(
+                broker_name=config.name,
+                profile_url=profile_url,
+                status=RemovalStatus.MANUAL_REQUIRED,
+                method=config.method,
+                submitted_at=datetime.now(),
+                notes=str(e),
+            )
         except Exception as e:
             return RemovalRequest(
                 broker_name=config.name,
@@ -169,6 +220,27 @@ class AutomationEngine:
             )
         finally:
             await page.close()
+
+    async def _dismiss_dialogs(self, page: Page) -> None:
+        """Try to dismiss common overlay dialogs (TOS, cookie consent, etc.)."""
+        dismiss_selectors = [
+            "dialog[open] button",                         # generic <dialog> buttons
+            "[class*='tos'] button",                       # TOS modals
+            "[class*='consent'] button",                   # cookie consent
+            "[class*='cookie'] button[class*='accept']",   # cookie accept buttons
+            "[class*='cookie'] button[class*='agree']",
+            "button[id*='accept']",
+            "button[id*='agree']",
+        ]
+        for selector in dismiss_selectors:
+            try:
+                btn = await page.query_selector(selector)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    await asyncio.sleep(0.5)
+                    return
+            except Exception:
+                continue
 
     async def _execute_step(
         self,
@@ -188,7 +260,9 @@ class AutomationEngine:
                 await page.fill(step.selector, value)
 
             case "click":
-                await page.click(step.selector)
+                # Try to dismiss any overlay dialogs before clicking
+                await self._dismiss_dialogs(page)
+                await page.click(step.selector, timeout=15000)
 
             case "wait" | "wait_seconds":
                 seconds = step.wait_seconds or 2.0
@@ -197,12 +271,18 @@ class AutomationEngine:
             case "capture_url":
                 profile_url = page.url
 
+            case "dismiss_dialogs":
+                await self._dismiss_dialogs(page)
+
             case "solve_captcha":
                 print(
                     f"\n[!] CAPTCHA detected on {page.url}\n"
                     "    Please solve it in the browser window, then press Enter to continue..."
                 )
                 await asyncio.get_event_loop().run_in_executor(None, input)
+
+            case "manual_step":
+                raise _ManualRequired(step.value or "Manual intervention required")
 
             case "await_email" | "click_email_link":
                 raise _AwaitingVerification()
@@ -238,3 +318,7 @@ class AutomationEngine:
 
 class _AwaitingVerification(Exception):
     """Internal signal that the opt-out flow requires email verification."""
+
+
+class _ManualRequired(Exception):
+    """Internal signal that the opt-out flow requires manual user action."""

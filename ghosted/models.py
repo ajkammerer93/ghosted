@@ -72,6 +72,7 @@ class BrokerConfig(BaseModel):
     url: str
     opt_out_url: str
     method: BrokerMethod
+    enabled: bool = True
     parent_company: Optional[str] = None
     captcha: Optional[str] = None
     requires_email_verification: bool = False

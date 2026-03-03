@@ -24,7 +24,10 @@ async def scan_brokers(
         on_broker_start: callback(broker_name, current_index, total) called before each broker.
         on_broker_done: callback(result, current_index, total) called after each broker.
     """
-    scannable = [b for b in brokers if not (b.method == BrokerMethod.PHONE and b.search is None)]
+    scannable = [
+        b for b in brokers
+        if b.enabled and not (b.method == BrokerMethod.PHONE and b.search is None)
+    ]
     total = len(scannable)
 
     report = ScanReport(
