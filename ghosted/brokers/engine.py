@@ -149,7 +149,14 @@ class AutomationEngine:
                 first = results[0]
                 link = await first.query_selector("a")
                 if link:
-                    profile_url = await link.get_attribute("href")
+                    href = await link.get_attribute("href")
+                    if href:
+                        # Resolve relative URLs to absolute
+                        if href.startswith("/"):
+                            from urllib.parse import urljoin
+                            profile_url = urljoin(page.url, href)
+                        else:
+                            profile_url = href
 
                 return ScanResult(
                     broker_name=config.name,

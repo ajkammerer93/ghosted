@@ -13,21 +13,10 @@ search:
   no_results_indicator: "We couldn't find"
 opt_out_steps:
   - action: navigate
-    url: "https://www.whitepages.com/name/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
-  - action: wait_seconds
-    wait_seconds: 2
-  - action: dismiss_dialogs
-  - action: click
-    selector: ".serp-card a"
-  - action: wait_seconds
-    wait_seconds: 2
-  - action: capture_url
-    type: "profile_url"
-  - action: navigate
     url: "https://www.whitepages.com/suppression-requests"
   - action: wait_seconds
     wait_seconds: 3
   - action: dismiss_dialogs
   - action: manual_step
-    value: "Paste your profile URL into the form, click Next, select a removal reason, then complete the phone verification call. Your profile URL: {{profile_url}}"
-notes: "Requires phone verification via automated call — cannot be fully automated. The opt-out form asks for the profile listing URL, then requires selecting a removal reason and verifying identity via phone call. Removal processed within 24 hours. Can also email support@whitepages.com with profile URL."
+    value: "Go to https://www.whitepages.com/suppression-requests and paste this profile URL into the form: {{profile_url}} — then click Next, select a removal reason, and complete the phone verification call."
+notes: "Requires phone verification via automated call — cannot be fully automated. Profile URL is captured during scan and passed to removal. Removal processed within 24 hours. Can also email support@whitepages.com with profile URL."
