@@ -110,6 +110,9 @@ class AutomationEngine:
             search_url = self._substitute_vars(config.search.url, profile)
             await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
 
+            # Dismiss any verification/cookie popups before checking results
+            await self._dismiss_dialogs(page)
+
             # Wait for JS-rendered results: try to wait for the result selector
             # or no-results indicator to appear, with a reasonable timeout
             selectors_to_wait = [config.search.result_selector]
