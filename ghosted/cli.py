@@ -245,7 +245,6 @@ def scan(
 @app.command()
 def remove(
     profile: str = typer.Option("default", "--profile", "-p", help="Profile to remove data for."),
-    all_brokers: bool = typer.Option(False, "--all", help="Remove from all brokers where data was found."),
     broker: Optional[str] = typer.Option(None, "--broker", help="Remove from a specific broker by name."),
     headed: bool = typer.Option(False, "--headed", help="Show browser window (requires display server)."),
 ) -> None:
@@ -281,13 +280,6 @@ def remove(
             console.print(f"[yellow]Broker '{broker}' not found in scan results or had no data.[/yellow]")
             history.close()
             raise typer.Exit()
-    elif not all_brokers:
-        console.print(
-            f"Found data on [bold red]{len(found_results)}[/bold red] broker(s). "
-            "Use [bold]--all[/bold] to remove from all, or [bold]--broker NAME[/bold] for a specific one."
-        )
-        history.close()
-        raise typer.Exit()
 
     registry = BrokerRegistry(BROKERS_DIR)
     broker_list = registry.load_all()
