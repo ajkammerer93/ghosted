@@ -226,11 +226,27 @@ class AutomationEngine:
 
     async def _dismiss_dialogs(self, page: Page) -> None:
         """Try to dismiss common overlay dialogs (TOS, cookie consent, etc.)."""
+        # First: force-close any open <dialog> elements via JavaScript
+        closed = await page.evaluate("""() => {
+            let closed = 0;
+            for (const d of document.querySelectorAll('dialog[open]')) {
+                d.close();
+                closed++;
+            }
+            // Also remove modal wrappers that block pointer events
+            for (const el of document.querySelectorAll('[class*="modal-wrapper"], [class*="overlay"]')) {
+                if (el.style) el.style.display = 'none';
+            }
+            return closed;
+        }""")
+        if closed:
+            await asyncio.sleep(0.3)
+            return
+
+        # Fallback: try clicking common accept/dismiss buttons
         dismiss_selectors = [
-            "dialog[open] button",                         # generic <dialog> buttons
-            "[class*='tos'] button",                       # TOS modals
-            "[class*='consent'] button",                   # cookie consent
-            "[class*='cookie'] button[class*='accept']",   # cookie accept buttons
+            "[class*='consent'] button",
+            "[class*='cookie'] button[class*='accept']",
             "[class*='cookie'] button[class*='agree']",
             "button[id*='accept']",
             "button[id*='agree']",
@@ -265,7 +281,12 @@ class AutomationEngine:
             case "click":
                 # Try to dismiss any overlay dialogs before clicking
                 await self._dismiss_dialogs(page)
-                await page.click(step.selector, timeout=15000)
+                try:
+                    await page.click(step.selector, timeout=10000)
+                except Exception:
+                    # Retry with force if an overlay is still intercepting
+                    await self._dismiss_dialogs(page)
+                    await page.click(step.selector, force=True, timeout=10000)
 
             case "wait" | "wait_seconds":
                 seconds = step.wait_seconds or 2.0
