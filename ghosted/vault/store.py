@@ -3,6 +3,7 @@
 import os
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from ghosted.models import UserProfile
 from ghosted.vault.crypto import decrypt, derive_key, encrypt, generate_salt
@@ -96,11 +97,23 @@ class VaultStore:
 
         return UserProfile.model_validate_json(decrypted)
 
-    def destroy(self) -> None:
-        """Securely delete vault files by overwriting before removal."""
+    def destroy(self, remove_history: bool = True) -> None:
+        """Securely delete vault files by overwriting before removal.
+
+        If remove_history is True, also deletes the scan history DB
+        and removes the profile directory if empty.
+        """
         for path in (self.vault_file, self.salt_file):
             if path.exists():
                 # Overwrite with random data before unlinking
                 size = path.stat().st_size
                 path.write_bytes(b"\x00" * size)
                 path.unlink()
+
+        if remove_history:
+            history_db = self.vault_dir / "scan_history.db"
+            if history_db.exists():
+                history_db.unlink()
+            # Remove the profile directory if it's now empty
+            if self.vault_dir.exists() and not any(self.vault_dir.iterdir()):
+                self.vault_dir.rmdir()

@@ -433,6 +433,51 @@ def brokers() -> None:
     print_broker_list(broker_list, console)
 
 
+@app.command("destroy-profile")
+def destroy_profile(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile to destroy."),
+    all_profiles: bool = typer.Option(False, "--all-profiles", help="Destroy all profiles."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Permanently delete a profile and its scan history."""
+    from ghosted.vault.store import VaultStore
+
+    if all_profiles:
+        profile_names = VaultStore.list_profiles(BASE_DIR)
+        if not profile_names:
+            console.print("[yellow]No profiles found.[/yellow]")
+            raise typer.Exit()
+    else:
+        _require_vault(profile)
+        profile_names = [profile]
+
+    if not yes:
+        names_str = ", ".join(f"[bold]{n}[/bold]" for n in profile_names)
+        console.print(
+            Panel(
+                f"This will permanently delete the following profile(s): {names_str}\n\n"
+                "This includes encrypted vault data and all scan/removal history.\n"
+                "[bold red]This action cannot be undone.[/bold red]",
+                title="Confirm Deletion",
+                border_style="red",
+            )
+        )
+        if not Confirm.ask("Are you sure?", default=False, console=console):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit()
+
+    for name in profile_names:
+        vault = _get_vault(name)
+        if vault.exists():
+            vault.destroy(remove_history=True)
+            console.print(f"  [red]Destroyed[/red] profile [bold]{name}[/bold]")
+        else:
+            console.print(f"  [yellow]Skipped[/yellow] profile [bold]{name}[/bold] (not found)")
+
+    count = len(profile_names)
+    console.print(f"\n[green]Done.[/green] {count} profile(s) deleted.")
+
+
 @app.command()
 def profiles() -> None:
     """List all configured profiles."""

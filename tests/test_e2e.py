@@ -154,6 +154,52 @@ class TestVaultStore:
         assert loaded.previous_addresses == []
         assert loaded.opt_out_email is None
 
+    def test_destroy_removes_history_and_directory(self, tmp_vault):
+        from ghosted.vault.store import VaultStore
+
+        store = VaultStore(tmp_vault)
+        store.create(_make_profile(), "passphrase123")
+        # Simulate a history DB file
+        history_db = store.vault_dir / "scan_history.db"
+        history_db.write_text("fake db")
+        assert history_db.exists()
+
+        store.destroy(remove_history=True)
+        assert not store.exists()
+        assert not history_db.exists()
+        assert not store.vault_dir.exists()
+
+    def test_destroy_keeps_history_when_requested(self, tmp_vault):
+        from ghosted.vault.store import VaultStore
+
+        store = VaultStore(tmp_vault)
+        store.create(_make_profile(), "passphrase123")
+        history_db = store.vault_dir / "scan_history.db"
+        history_db.write_text("fake db")
+
+        store.destroy(remove_history=False)
+        assert not store.exists()
+        assert history_db.exists()
+
+    def test_list_profiles(self, tmp_vault):
+        from ghosted.vault.store import VaultStore
+
+        # Create two profiles
+        store1 = VaultStore(tmp_vault, profile_name="alice")
+        store1.create(_make_profile(first_name="Alice"), "pass1234")
+        store2 = VaultStore(tmp_vault, profile_name="bob")
+        store2.create(_make_profile(first_name="Bob"), "pass5678")
+
+        profiles = VaultStore.list_profiles(tmp_vault)
+        assert "alice" in profiles
+        assert "bob" in profiles
+
+        # Destroy one and verify it's gone from the list
+        store1.destroy(remove_history=True)
+        profiles = VaultStore.list_profiles(tmp_vault)
+        assert "alice" not in profiles
+        assert "bob" in profiles
+
 
 # ===========================================================================
 # 2. BrokerRegistry — load all 20 configs

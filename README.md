@@ -65,6 +65,12 @@ ghosted status
 # List all profiles
 ghosted profiles
 
+# Delete a profile and its history
+ghosted destroy-profile --profile spouse
+
+# Delete all profiles
+ghosted destroy-profile --all-profiles
+
 # List available broker configs
 ghosted brokers
 ```
