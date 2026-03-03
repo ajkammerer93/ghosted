@@ -2,6 +2,7 @@ name: "Spokeo"
 url: "https://www.spokeo.com"
 opt_out_url: "https://www.spokeo.com/optout"
 method: "web_form"
+cloudflare: true
 parent_company: null
 captcha: "recaptcha_v2"
 requires_email_verification: true

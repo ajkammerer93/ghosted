@@ -21,6 +21,7 @@ from ghosted.models import (
     RemovalStatus,
     ScanReport,
     ScanResult,
+    ScanStatus,
     UserProfile,
 )
 
@@ -238,9 +239,9 @@ class TestHistoryDB:
             brokers_with_data=2,
             errors=0,
             results=[
-                ScanResult(broker_name="BrokerA", found=True, profile_url="https://a.com/u/1"),
-                ScanResult(broker_name="BrokerB", found=True, profile_url="https://b.com/u/2"),
-                ScanResult(broker_name="BrokerC", found=False),
+                ScanResult(broker_name="BrokerA", status=ScanStatus.FOUND, found=True, profile_url="https://a.com/u/1"),
+                ScanResult(broker_name="BrokerB", status=ScanStatus.FOUND, found=True, profile_url="https://b.com/u/2"),
+                ScanResult(broker_name="BrokerC", status=ScanStatus.NOT_FOUND, found=False),
             ],
         )
 
@@ -384,6 +385,7 @@ class TestHistoryDB:
             results=[
                 ScanResult(
                     broker_name="TestBroker",
+                    status=ScanStatus.FOUND,
                     found=True,
                     profile_url="https://test.com/u/1",
                     info_found=["name", "address", "phone"],
@@ -732,10 +734,135 @@ class TestModels:
     def test_scan_result_defaults(self):
         r = ScanResult(broker_name="Test")
         assert r.found is False
+        assert r.status == ScanStatus.UNKNOWN
         assert r.info_found == []
         assert r.error is None
+        assert r.page_title is None
+        assert r.http_status is None
 
     def test_removal_request_defaults(self):
         r = RemovalRequest(broker_name="Test")
         assert r.status == RemovalStatus.PENDING
         assert r.method == BrokerMethod.WEB_FORM
+
+
+# ===========================================================================
+# 9. ScanStatus classification
+# ===========================================================================
+
+
+class TestScanStatus:
+    """Tests for the ScanStatus enum and status-aware ScanResult."""
+
+    def test_all_status_values(self):
+        """All ScanStatus values are valid and serializable."""
+        for status in ScanStatus:
+            r = ScanResult(broker_name="test", status=status)
+            data = json.loads(r.model_dump_json())
+            assert data["status"] == status.value
+
+    def test_found_status_consistency(self):
+        """FOUND status should have found=True; all others found=False."""
+        r_found = ScanResult(broker_name="test", status=ScanStatus.FOUND, found=True)
+        assert r_found.found is True
+        assert r_found.status == ScanStatus.FOUND
+
+        for status in [ScanStatus.NOT_FOUND, ScanStatus.BLOCKED, ScanStatus.ERROR, ScanStatus.UNKNOWN]:
+            r = ScanResult(broker_name="test", status=status, found=False)
+            assert r.found is False
+
+    def test_page_title_and_http_status(self):
+        """ScanResult stores debug metadata."""
+        r = ScanResult(
+            broker_name="test",
+            status=ScanStatus.BLOCKED,
+            page_title="Just a moment...",
+            http_status=403,
+        )
+        assert r.page_title == "Just a moment..."
+        assert r.http_status == 403
+
+    def test_scan_report_blocked_unknown_counts(self):
+        """ScanReport tracks blocked and unknown counts."""
+        report = ScanReport(
+            scan_id="test-counts",
+            started_at=datetime.now(),
+            total_brokers=5,
+            brokers_with_data=1,
+            brokers_blocked=2,
+            brokers_unknown=1,
+            errors=1,
+            results=[
+                ScanResult(broker_name="A", status=ScanStatus.FOUND, found=True),
+                ScanResult(broker_name="B", status=ScanStatus.NOT_FOUND),
+                ScanResult(broker_name="C", status=ScanStatus.BLOCKED),
+                ScanResult(broker_name="D", status=ScanStatus.BLOCKED),
+                ScanResult(broker_name="E", status=ScanStatus.UNKNOWN),
+            ],
+        )
+        assert report.brokers_blocked == 2
+        assert report.brokers_unknown == 1
+        assert report.brokers_with_data == 1
+
+    def test_history_status_roundtrip(self, tmp_path):
+        """Status field survives the DB round-trip."""
+        from ghosted.core.history import HistoryDB
+
+        db = HistoryDB(tmp_path / "status_test.db")
+        db.init_db()
+
+        report = ScanReport(
+            scan_id="status-rt",
+            started_at=datetime.now(),
+            completed_at=datetime.now(),
+            total_brokers=3,
+            brokers_with_data=1,
+            brokers_blocked=1,
+            brokers_unknown=0,
+            errors=1,
+            results=[
+                ScanResult(broker_name="Found", status=ScanStatus.FOUND, found=True, page_title="Results", http_status=200),
+                ScanResult(broker_name="Blocked", status=ScanStatus.BLOCKED, error="Cloudflare", page_title="Just a moment...", http_status=403),
+                ScanResult(broker_name="Error", status=ScanStatus.ERROR, error="Timeout"),
+            ],
+        )
+        db.save_scan(report)
+
+        loaded = db.get_latest_scan()
+        assert loaded is not None
+        assert loaded.brokers_blocked == 1
+        assert loaded.results[0].status == ScanStatus.FOUND
+        assert loaded.results[0].page_title == "Results"
+        assert loaded.results[0].http_status == 200
+        assert loaded.results[1].status == ScanStatus.BLOCKED
+        assert loaded.results[1].page_title == "Just a moment..."
+        assert loaded.results[2].status == ScanStatus.ERROR
+        db.close()
+
+    def test_cloudflare_brokers_have_flag(self):
+        """Known Cloudflare-protected brokers must have cloudflare=true."""
+        from ghosted.brokers.registry import BrokerRegistry
+
+        registry = BrokerRegistry(BROKERS_DIR)
+        brokers = registry.load_all()
+        broker_map = {b.name: b for b in brokers}
+
+        cloudflare_names = [
+            "Spokeo", "BeenVerified", "TruePeopleSearch",
+            "FastPeopleSearch", "Nuwber", "PeopleLooker",
+            "CocoFinder", "CyberBackgroundChecks", "PeopleFinders",
+            "SearchPeopleFree", "USPhoneBook",
+        ]
+        for name in cloudflare_names:
+            assert name in broker_map, f"Broker {name} not found in registry"
+            assert broker_map[name].cloudflare is True, f"Broker {name} missing cloudflare=true"
+
+    def test_broker_config_cloudflare_default(self):
+        """BrokerConfig.cloudflare defaults to False."""
+        b = BrokerConfig(
+            name="Test",
+            url="https://test.com",
+            opt_out_url="https://test.com/opt",
+            method=BrokerMethod.WEB_FORM,
+        )
+        assert b.cloudflare is False

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from ghosted.brokers.engine import AutomationEngine
-from ghosted.models import BrokerConfig, BrokerMethod, ScanReport, ScanResult, UserProfile
+from ghosted.models import BrokerConfig, BrokerMethod, ScanReport, ScanResult, ScanStatus, UserProfile
 
 
 async def scan_brokers(
@@ -45,10 +45,16 @@ async def scan_brokers(
             report.results.append(result)
             if result.found:
                 report.brokers_with_data += 1
-            if result.error:
+            if result.status == ScanStatus.BLOCKED:
+                report.brokers_blocked += 1
+            elif result.status == ScanStatus.UNKNOWN:
+                report.brokers_unknown += 1
+            if result.status == ScanStatus.ERROR:
                 report.errors += 1
         except Exception as e:
-            result = ScanResult(broker_name=config.name, found=False, error=str(e))
+            result = ScanResult(
+                broker_name=config.name, status=ScanStatus.ERROR, found=False, error=str(e)
+            )
             report.results.append(result)
             report.errors += 1
 

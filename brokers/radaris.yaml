@@ -1,6 +1,6 @@
 name: "Radaris"
 url: "https://radaris.com"
-opt_out_url: "https://radaris.com/control-privacy"
+opt_out_url: "https://radaris.com/control/privacy"
 method: "web_form"
 parent_company: null
 captcha: "recaptcha_v2"
@@ -9,9 +9,9 @@ recommended_rescan_days: 60
 email_template: "ccpa_deletion"
 search:
   url: "https://radaris.com/p/{{user.first_name}}/{{user.last_name}}/"
-  result_selector: "td.names"
+  result_selector: "a[href*='/p/']"
   name_selector: "td.names a"
-  no_results_indicator: "No results found"
+  no_results_indicator: "did not return any results"
 opt_out_steps:
   - action: navigate
     url: "https://radaris.com"

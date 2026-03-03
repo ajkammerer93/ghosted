@@ -2,6 +2,7 @@ name: "Nuwber"
 url: "https://nuwber.com"
 opt_out_url: "https://nuwber.com/removal/link"
 method: "web_form"
+cloudflare: true
 parent_company: null
 captcha: null
 requires_email_verification: true

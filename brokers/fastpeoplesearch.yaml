@@ -2,6 +2,7 @@ name: "FastPeopleSearch"
 url: "https://www.fastpeoplesearch.com"
 opt_out_url: "https://www.fastpeoplesearch.com/removal"
 method: "web_form"
+cloudflare: true
 parent_company: null
 captcha: "recaptcha_v2"
 requires_email_verification: true

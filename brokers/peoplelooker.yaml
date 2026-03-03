@@ -2,6 +2,7 @@ name: "PeopleLooker"
 url: "https://www.peoplelooker.com"
 opt_out_url: "https://www.peoplelooker.com/app/optout/search"
 method: "web_form"
+cloudflare: true
 parent_company: "The Lifetime Value Company"
 captcha: "cloudflare_turnstile"
 requires_email_verification: true

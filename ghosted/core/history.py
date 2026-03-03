@@ -13,6 +13,7 @@ from ghosted.models import (
     RemovalStatus,
     ScanReport,
     ScanResult,
+    ScanStatus,
 )
 
 
@@ -35,7 +36,7 @@ class HistoryDB:
         return self._conn
 
     def init_db(self) -> None:
-        """Create tables if they don't already exist."""
+        """Create tables if they don't already exist, and migrate older schemas."""
         conn = self._connect()
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS scans (
@@ -44,6 +45,8 @@ class HistoryDB:
                 completed_at TEXT,
                 total_brokers INTEGER NOT NULL DEFAULT 0,
                 brokers_with_data INTEGER NOT NULL DEFAULT 0,
+                brokers_blocked INTEGER NOT NULL DEFAULT 0,
+                brokers_unknown INTEGER NOT NULL DEFAULT 0,
                 errors INTEGER NOT NULL DEFAULT 0
             );
 
@@ -52,9 +55,12 @@ class HistoryDB:
                 scan_id TEXT NOT NULL,
                 broker_name TEXT NOT NULL,
                 found INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'unknown',
                 profile_url TEXT,
                 info_found_json TEXT,
                 error TEXT,
+                page_title TEXT,
+                http_status INTEGER,
                 timestamp TEXT NOT NULL,
                 FOREIGN KEY (scan_id) REFERENCES scans(id)
             );
@@ -73,6 +79,33 @@ class HistoryDB:
             );
         """)
         conn.commit()
+        self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Add columns that may be missing from older schemas."""
+        existing = {
+            row[1] for row in conn.execute("PRAGMA table_info(scan_results)").fetchall()
+        }
+        migrations = [
+            ("status", "TEXT NOT NULL DEFAULT 'unknown'"),
+            ("page_title", "TEXT"),
+            ("http_status", "INTEGER"),
+        ]
+        for col, typedef in migrations:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE scan_results ADD COLUMN {col} {typedef}")
+
+        scan_cols = {
+            row[1] for row in conn.execute("PRAGMA table_info(scans)").fetchall()
+        }
+        scan_migrations = [
+            ("brokers_blocked", "INTEGER NOT NULL DEFAULT 0"),
+            ("brokers_unknown", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        for col, typedef in scan_migrations:
+            if col not in scan_cols:
+                conn.execute(f"ALTER TABLE scans ADD COLUMN {col} {typedef}")
+        conn.commit()
 
     def close(self) -> None:
         if self._conn:
@@ -83,28 +116,34 @@ class HistoryDB:
         """Insert a scan report and all its results."""
         conn = self._connect()
         conn.execute(
-            "INSERT INTO scans (id, started_at, completed_at, total_brokers, brokers_with_data, errors) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO scans (id, started_at, completed_at, total_brokers, brokers_with_data, "
+            "brokers_blocked, brokers_unknown, errors) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 report.scan_id,
                 report.started_at.isoformat(),
                 report.completed_at.isoformat() if report.completed_at else None,
                 report.total_brokers,
                 report.brokers_with_data,
+                report.brokers_blocked,
+                report.brokers_unknown,
                 report.errors,
             ),
         )
         for result in report.results:
             conn.execute(
-                "INSERT INTO scan_results (scan_id, broker_name, found, profile_url, info_found_json, error, timestamp) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO scan_results (scan_id, broker_name, found, status, profile_url, "
+                "info_found_json, error, page_title, http_status, timestamp) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     report.scan_id,
                     result.broker_name,
                     1 if result.found else 0,
+                    result.status.value,
                     result.profile_url,
                     json.dumps(result.info_found),
                     result.error,
+                    result.page_title,
+                    result.http_status,
                     result.timestamp.isoformat(),
                 ),
             )
@@ -193,13 +232,17 @@ class HistoryDB:
 
         results = []
         for r in result_rows:
+            status_val = r["status"] if "status" in r.keys() else "unknown"
             results.append(
                 ScanResult(
                     broker_name=r["broker_name"],
+                    status=ScanStatus(status_val),
                     found=bool(r["found"]),
                     profile_url=r["profile_url"],
                     info_found=json.loads(r["info_found_json"]) if r["info_found_json"] else [],
                     error=r["error"],
+                    page_title=r["page_title"] if "page_title" in r.keys() else None,
+                    http_status=r["http_status"] if "http_status" in r.keys() else None,
                     timestamp=datetime.fromisoformat(r["timestamp"]),
                 )
             )
@@ -210,6 +253,8 @@ class HistoryDB:
             completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
             total_brokers=row["total_brokers"],
             brokers_with_data=row["brokers_with_data"],
+            brokers_blocked=row["brokers_blocked"] if "brokers_blocked" in row.keys() else 0,
+            brokers_unknown=row["brokers_unknown"] if "brokers_unknown" in row.keys() else 0,
             errors=row["errors"],
             results=results,
         )

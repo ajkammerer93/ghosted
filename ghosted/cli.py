@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Confirm, Prompt
 
-from ghosted.models import RemovalStatus, UserProfile
+from ghosted.models import RemovalStatus, ScanStatus, UserProfile
 
 app = typer.Typer(
     name="ghosted",
@@ -206,9 +206,14 @@ def scan(
                 progress.update(task_id, description=f"[cyan]{name}[/cyan]")
 
             def on_done(result, current: int, total: int):
-                s = "[green]found[/green]" if result.found else (
-                    "[red]error[/red]" if result.error else "[dim]clear[/dim]"
-                )
+                status_map = {
+                    ScanStatus.FOUND: "[bold red]found[/bold red]",
+                    ScanStatus.NOT_FOUND: "[green]clear[/green]",
+                    ScanStatus.BLOCKED: "[yellow]blocked[/yellow]",
+                    ScanStatus.ERROR: "[red]error[/red]",
+                    ScanStatus.UNKNOWN: "[yellow]unknown[/yellow]",
+                }
+                s = status_map.get(result.status, f"[dim]{result.status.value}[/dim]")
                 progress.console.print(
                     f"  [{current}/{total}] {result.broker_name}: {s}"
                 )

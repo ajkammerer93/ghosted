@@ -2,6 +2,7 @@ name: "BeenVerified"
 url: "https://www.beenverified.com"
 opt_out_url: "https://www.beenverified.com/app/optout/search"
 method: "web_form"
+cloudflare: true
 parent_company: null
 captcha: "cloudflare_turnstile"
 requires_email_verification: true

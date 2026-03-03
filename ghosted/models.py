@@ -28,6 +28,16 @@ class RemovalStatus(str, Enum):
     MANUAL_REQUIRED = "manual_required"
 
 
+class ScanStatus(str, Enum):
+    """Classification of a broker scan outcome."""
+
+    FOUND = "found"
+    NOT_FOUND = "not_found"
+    BLOCKED = "blocked"
+    ERROR = "error"
+    UNKNOWN = "unknown"
+
+
 class UserProfile(BaseModel):
     """User's personal information stored in the encrypted vault."""
 
@@ -73,6 +83,7 @@ class BrokerConfig(BaseModel):
     opt_out_url: str
     method: BrokerMethod
     enabled: bool = True
+    cloudflare: bool = False
     parent_company: Optional[str] = None
     captcha: Optional[str] = None
     requires_email_verification: bool = False
@@ -88,11 +99,14 @@ class ScanResult(BaseModel):
     """Result of scanning a single broker for user data."""
 
     broker_name: str
+    status: ScanStatus = ScanStatus.UNKNOWN
     profile_url: Optional[str] = None
     info_found: list[str] = Field(default_factory=list)
     found: bool = False
     timestamp: datetime = Field(default_factory=datetime.now)
     error: Optional[str] = None
+    page_title: Optional[str] = None
+    http_status: Optional[int] = None
 
 
 class RemovalRequest(BaseModel):
@@ -117,6 +131,8 @@ class ScanReport(BaseModel):
     completed_at: Optional[datetime] = None
     total_brokers: int = 0
     brokers_with_data: int = 0
+    brokers_blocked: int = 0
+    brokers_unknown: int = 0
     results: list[ScanResult] = Field(default_factory=list)
     errors: int = 0
 

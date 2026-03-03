@@ -5,43 +5,62 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ghosted.models import BrokerConfig, RemovalReport, RemovalStatus, ScanReport
+from ghosted.models import BrokerConfig, RemovalReport, RemovalStatus, ScanReport, ScanStatus
 
 
 def print_scan_report(report: ScanReport, console: Console) -> None:
     """Display scan results in a Rich table with color coding."""
     table = Table(title="Scan Results", show_lines=True)
     table.add_column("Broker", style="bold")
-    table.add_column("Found", justify="center")
-    table.add_column("Opt-Out Type")
+    table.add_column("Status", justify="center")
     table.add_column("Details")
 
+    status_display = {
+        ScanStatus.FOUND: ("Found", "bold red"),
+        ScanStatus.NOT_FOUND: ("Clear", "green"),
+        ScanStatus.BLOCKED: ("Blocked", "yellow"),
+        ScanStatus.ERROR: ("Error", "red"),
+        ScanStatus.UNKNOWN: ("Unknown", "yellow"),
+    }
+
     for result in report.results:
+        label, style = status_display.get(result.status, ("Unknown", "yellow"))
+        status_text = Text(label, style=style)
+
+        details = ""
+        if result.profile_url:
+            details = result.profile_url
         if result.error:
-            found_text = Text("Error", style="red")
-            details = result.error
-        elif result.found:
-            found_text = Text("Yes", style="bold red")
-            details = result.profile_url or ""
-        else:
-            found_text = Text("No", style="green")
-            details = ""
+            details = result.error if not details else f"{details}  ({result.error})"
 
         info = ", ".join(result.info_found) if result.info_found else ""
         if info:
             details = f"{details}  {info}" if details else info
 
-        table.add_row(result.broker_name, found_text, "", details.strip())
+        table.add_row(result.broker_name, status_text, details.strip())
 
     console.print()
     console.print(table)
 
     summary_parts = [
-        f"[bold]{report.total_brokers}[/bold] brokers scanned",
-        f"[bold red]{report.brokers_with_data}[/bold red] found your data" if report.brokers_with_data else "[bold green]0[/bold green] found your data",
+        f"[bold]{report.total_brokers}[/bold] scanned",
     ]
+    if report.brokers_with_data:
+        summary_parts.append(f"[bold red]{report.brokers_with_data}[/bold red] found")
+    else:
+        summary_parts.append(f"[green]0[/green] found")
+
+    # Count clear results
+    clear_count = sum(1 for r in report.results if r.status == ScanStatus.NOT_FOUND)
+    if clear_count:
+        summary_parts.append(f"[green]{clear_count}[/green] clear")
+
+    if report.brokers_blocked:
+        summary_parts.append(f"[yellow]{report.brokers_blocked}[/yellow] blocked")
+    if report.brokers_unknown:
+        summary_parts.append(f"[yellow]{report.brokers_unknown}[/yellow] unknown")
     if report.errors:
-        summary_parts.append(f"[yellow]{report.errors}[/yellow] errors")
+        summary_parts.append(f"[red]{report.errors}[/red] errors")
 
     console.print(Panel(" | ".join(summary_parts), title="Summary", border_style="blue"))
 

@@ -9,8 +9,8 @@ requires_email_verification: true
 recommended_rescan_days: 90
 search:
   url: "https://isapps.acxiom.com/optout/optout.aspx"
-  result_selector: ".opt-out-form"
-  name_selector: ".opt-out-form"
+  result_selector: "form"
+  name_selector: "form"
   no_results_indicator: null
 opt_out_steps:
   - action: navigate
@@ -45,4 +45,4 @@ opt_out_steps:
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "isapps.acxiom.com/optout/confirm"
-notes: "Major data aggregator. Opt-out takes about 2 weeks. Does not retroactively remove data already shared with marketers. Can also call (877) 774-2094."
+notes: "Major data aggregator — has essentially everyone's data. No searchable database; opt-out form is the only interface. result_selector 'form' confirms the ASP.NET page loaded (FOUND is always correct). Protected by Incapsula (Imperva) WAF — non-browser requests get blocked. May show Unknown if WAF triggers. Opt-out takes about 2 weeks. Does not retroactively remove data already shared with marketers. Can also call (877) 774-2094."

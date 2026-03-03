@@ -13,6 +13,7 @@ from ghosted.models import (
     RemovalRequest,
     RemovalStatus,
     ScanResult,
+    ScanStatus,
     UserProfile,
 )
 
@@ -96,11 +97,12 @@ class AutomationEngine:
         """Search a broker for the user's data.
 
         Navigates to the broker's search URL, fills in template variables,
-        and checks whether results are found.
+        and classifies the outcome as FOUND, NOT_FOUND, BLOCKED, ERROR, or UNKNOWN.
         """
         if not config.search:
             return ScanResult(
                 broker_name=config.name,
+                status=ScanStatus.ERROR,
                 found=False,
                 error="No search configuration defined",
             )
@@ -108,7 +110,61 @@ class AutomationEngine:
         page: Page = await self._context.new_page()
         try:
             search_url = self._substitute_vars(config.search.url, profile)
-            await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+            response = await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+
+            http_status = response.status if response else None
+            page_title = await page.title()
+
+            # Check HTTP status for obvious blocks/errors
+            if http_status and http_status == 403:
+                return ScanResult(
+                    broker_name=config.name,
+                    status=ScanStatus.BLOCKED,
+                    found=False,
+                    error=f"HTTP {http_status} Forbidden",
+                    page_title=page_title,
+                    http_status=http_status,
+                )
+            if http_status and http_status == 404:
+                return ScanResult(
+                    broker_name=config.name,
+                    status=ScanStatus.ERROR,
+                    found=False,
+                    error=f"HTTP {http_status} Not Found",
+                    page_title=page_title,
+                    http_status=http_status,
+                )
+            if http_status and http_status >= 500:
+                return ScanResult(
+                    broker_name=config.name,
+                    status=ScanStatus.ERROR,
+                    found=False,
+                    error=f"HTTP {http_status} Server Error",
+                    page_title=page_title,
+                    http_status=http_status,
+                )
+
+            # Detect Cloudflare challenge pages
+            if await self._detect_cloudflare(page):
+                return ScanResult(
+                    broker_name=config.name,
+                    status=ScanStatus.BLOCKED,
+                    found=False,
+                    error="Cloudflare protection detected",
+                    page_title=page_title,
+                    http_status=http_status,
+                )
+
+            # Detect CAPTCHA walls on search page
+            if await self._detect_captcha_wall(page):
+                return ScanResult(
+                    broker_name=config.name,
+                    status=ScanStatus.BLOCKED,
+                    found=False,
+                    error="CAPTCHA wall detected",
+                    page_title=page_title,
+                    http_status=http_status,
+                )
 
             # Dismiss any verification/cookie popups before checking results
             await self._dismiss_dialogs(page)
@@ -139,7 +195,13 @@ class AutomationEngine:
                 else:
                     no_results = await page.get_by_text(indicator).first.is_visible() if await page.get_by_text(indicator).count() > 0 else False
                 if no_results:
-                    return ScanResult(broker_name=config.name, found=False)
+                    return ScanResult(
+                        broker_name=config.name,
+                        status=ScanStatus.NOT_FOUND,
+                        found=False,
+                        page_title=page_title,
+                        http_status=http_status,
+                    )
 
             # Check for result matches
             results = await page.query_selector_all(config.search.result_selector)
@@ -147,32 +209,87 @@ class AutomationEngine:
                 # Try to grab the first result's link
                 profile_url = None
                 first = results[0]
-                link = await first.query_selector("a")
-                if link:
-                    href = await link.get_attribute("href")
-                    if href:
-                        # Resolve relative URLs to absolute
-                        if href.startswith("/"):
-                            from urllib.parse import urljoin
-                            profile_url = urljoin(page.url, href)
-                        else:
-                            profile_url = href
+                # Check if the matched element itself is a link
+                tag = await first.evaluate("el => el.tagName.toLowerCase()")
+                if tag == "a":
+                    href = await first.get_attribute("href")
+                else:
+                    link = await first.query_selector("a")
+                    href = await link.get_attribute("href") if link else None
+                if href:
+                    from urllib.parse import urljoin
+                    profile_url = urljoin(page.url, href)
 
                 return ScanResult(
                     broker_name=config.name,
+                    status=ScanStatus.FOUND,
                     found=True,
                     profile_url=profile_url,
+                    page_title=page_title,
+                    http_status=http_status,
                 )
 
-            return ScanResult(broker_name=config.name, found=False)
+            # Nothing matched — classify based on cloudflare flag
+            if config.cloudflare:
+                return ScanResult(
+                    broker_name=config.name,
+                    status=ScanStatus.BLOCKED,
+                    found=False,
+                    error="Known Cloudflare-protected broker, no selectors matched",
+                    page_title=page_title,
+                    http_status=http_status,
+                )
+
+            return ScanResult(
+                broker_name=config.name,
+                status=ScanStatus.UNKNOWN,
+                found=False,
+                error="Neither results nor no-results indicator matched",
+                page_title=page_title,
+                http_status=http_status,
+            )
         except Exception as e:
             return ScanResult(
                 broker_name=config.name,
+                status=ScanStatus.ERROR,
                 found=False,
                 error=str(e),
             )
         finally:
             await page.close()
+
+    async def _detect_cloudflare(self, page: Page) -> bool:
+        """Detect Cloudflare challenge/interstitial pages."""
+        title = (await page.title()).lower()
+        if "just a moment" in title:
+            return True
+
+        cf_indicators = [
+            "#challenge-form",
+            ".cf-browser-verification",
+            "#cf-challenge-running",
+            "iframe[src*='challenges.cloudflare.com']",
+        ]
+        for selector in cf_indicators:
+            if await page.query_selector(selector):
+                return True
+
+        return False
+
+    async def _detect_captcha_wall(self, page: Page) -> bool:
+        """Detect CAPTCHA challenges blocking the search page."""
+        captcha_selectors = [
+            "iframe[src*='recaptcha']",
+            "iframe[src*='hcaptcha']",
+            "iframe[src*='challenges.cloudflare.com']",
+            ".g-recaptcha",
+            ".h-captcha",
+            "#cf-turnstile",
+        ]
+        for selector in captcha_selectors:
+            if await page.query_selector(selector):
+                return True
+        return False
 
     async def execute_removal(
         self,

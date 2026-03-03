@@ -2,6 +2,7 @@ name: "CyberBackgroundChecks"
 url: "https://www.cyberbackgroundchecks.com"
 opt_out_url: "https://www.cyberbackgroundchecks.com/removal"
 method: "web_form"
+cloudflare: true
 parent_company: null
 captcha: "recaptcha_v2"
 requires_email_verification: true

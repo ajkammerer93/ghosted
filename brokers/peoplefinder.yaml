@@ -2,6 +2,7 @@ name: "PeopleFinders"
 url: "https://www.peoplefinders.com"
 opt_out_url: "https://www.peoplefinders.com/opt-out"
 method: "web_form"
+cloudflare: true
 parent_company: "Intelius"
 captcha: "recaptcha_v2"
 requires_email_verification: true
