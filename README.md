@@ -4,7 +4,7 @@ Open-source personal data removal tool. Scan, remove, and monitor your personal 
 
 ## Features
 
-- **Scan** — Search 20 data broker sites for your personal information with honest status classification (Found, Clear, Blocked, Unknown, Error)
+- **Scan** — Search 19 data broker sites for your personal information with honest status classification (Found, Clear, Blocked, Unknown, Error)
 - **Remove** — Automate opt-out requests via web forms and legal demand emails
 - **Multi-profile** — Manage removals for yourself, spouse, family members
 - **Stealth mode** — Anti-detection browser fingerprinting to bypass basic bot checks
@@ -88,7 +88,7 @@ Your personal information is stored in an encrypted local vault (`~/.ghosted/pro
 
 ### Anti-detection
 
-The browser engine uses playwright-stealth to patch common automation fingerprints, randomized viewports and user agents, and anti-detection launch arguments. This bypasses basic bot checks but not advanced protections like Cloudflare Turnstile — 11 of 20 brokers are Cloudflare-protected and will show "Blocked" during automated scans. The scan engine detects Cloudflare challenge pages, CAPTCHA walls, and HTTP error codes to classify results honestly rather than reporting false "clear" results.
+The browser engine uses playwright-stealth to patch common automation fingerprints, randomized viewports and user agents, and anti-detection launch arguments. This bypasses basic bot checks but not advanced protections like Cloudflare Turnstile — 11 of 20 brokers are Cloudflare-protected. The scan engine detects Cloudflare challenge pages (including "Just a moment", "Attention Required", "Security Challenge" titles), CAPTCHA walls, and HTTP error codes to classify results honestly rather than reporting false "clear" results. In headed mode, some CF challenges auto-resolve. Debug snapshots of unmatched pages are saved to `~/.ghosted/debug/` for selector troubleshooting.
 
 ### CAPTCHA handling
 
@@ -96,9 +96,9 @@ Some brokers require CAPTCHAs during opt-out. In headed mode, the engine pauses 
 
 ## Supported Brokers
 
-20 data brokers configured, including Spokeo, Whitepages, BeenVerified, TruePeopleSearch, FastPeopleSearch, PeopleConnect (Intelius/TruthFinder/InstantCheckmate/USSearch), Radaris, Nuwber, VeriPages, and more.
+20 data brokers configured (19 enabled), including Spokeo, Whitepages, BeenVerified, TruePeopleSearch, FastPeopleSearch, PeopleConnect (Intelius/TruthFinder/InstantCheckmate/USSearch), Radaris, Nuwber, ThatsThem, Addresses.com, VeriPages, and more.
 
-Not all brokers will return results — 11 are behind Cloudflare and will show "Blocked." Brokers with `cloudflare: true` in their YAML are known to be Cloudflare-protected. Run `ghosted brokers` to see the full list.
+Not all brokers will return results — 11 are behind Cloudflare and will show "Blocked" in headless mode. In headed mode, some CF challenges auto-resolve (e.g. Spokeo). Brokers with `cloudflare: true` in their YAML are known to be Cloudflare-protected. Run `ghosted brokers` to see the full list.
 
 ## Adding Brokers
 
