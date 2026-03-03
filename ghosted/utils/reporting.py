@@ -64,16 +64,32 @@ def print_removal_report(report: RemovalReport, console: Console) -> None:
         RemovalStatus.MANUAL_REQUIRED: "blue",
     }
 
+    manual_actions = []
+
     for req in report.requests:
         style = status_styles.get(req.status, "white")
         status_text = Text(req.status.value.replace("_", " ").title(), style=style)
         notes = req.notes or ""
         if req.error:
             notes = req.error if not notes else f"{notes} ({req.error})"
-        table.add_row(req.broker_name, status_text, req.method.value, notes)
+
+        if req.status == RemovalStatus.MANUAL_REQUIRED and notes:
+            table.add_row(req.broker_name, status_text, req.method.value, "See instructions below")
+            manual_actions.append((req.broker_name, notes, req.profile_url))
+        else:
+            table.add_row(req.broker_name, status_text, req.method.value, notes)
 
     console.print()
     console.print(table)
+
+    for broker_name, notes, profile_url in manual_actions:
+        console.print()
+        console.print(Panel(
+            f"{notes}\n\n[bold]Profile URL:[/bold]\n{profile_url}" if profile_url else notes,
+            title=f"[bold blue]{broker_name}[/bold blue] — Manual Action Required",
+            border_style="blue",
+            expand=True,
+        ))
 
     summary_parts = [
         f"[bold]{report.total_requests}[/bold] total",
