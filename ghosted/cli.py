@@ -286,21 +286,46 @@ def remove(
 
     console.print(f"\nRemoving from [bold]{len(found_results)}[/bold] broker(s)...\n")
 
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    )
+
     async def _run_removals():
+        task_id = progress.add_task("Starting...", total=len(found_results))
+
+        def on_start(name: str, current: int, total: int):
+            progress.update(task_id, description=f"[cyan]{name}[/cyan]")
+
+        def on_done(request, current: int, total: int):
+            status_map = {
+                RemovalStatus.SUBMITTED: "[green]submitted[/green]",
+                RemovalStatus.AWAITING_VERIFICATION: "[yellow]awaiting verification[/yellow]",
+                RemovalStatus.MANUAL_REQUIRED: "[yellow]manual required[/yellow]",
+                RemovalStatus.PENDING: "[yellow]pending[/yellow]",
+                RemovalStatus.FAILED: "[red]failed[/red]",
+            }
+            s = status_map.get(request.status, f"[dim]{request.status.value}[/dim]")
+            progress.console.print(f"  [{current}/{total}] {request.broker_name}: {s}")
+            progress.update(task_id, completed=current)
+
         engine = AutomationEngine(headless=not headed)
         await engine.start()
         try:
-            report = await remove_from_brokers(user_profile, found_results, broker_list, engine)
+            report = await remove_from_brokers(
+                user_profile, found_results, broker_list, engine,
+                on_broker_start=on_start,
+                on_broker_done=on_done,
+            )
         finally:
             await engine.stop()
         return report
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        progress.add_task("Submitting opt-out requests...", total=None)
+    with progress:
         report = asyncio.run(_run_removals())
 
     print_removal_report(report, console)

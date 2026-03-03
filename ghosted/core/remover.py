@@ -1,6 +1,7 @@
 """Broker removal logic — execute opt-outs for brokers where data was found."""
 
 from datetime import datetime
+from typing import Callable, Optional
 
 from ghosted.brokers.engine import AutomationEngine
 from ghosted.models import (
@@ -19,6 +20,8 @@ async def remove_from_brokers(
     scan_results: list[ScanResult],
     brokers: list[BrokerConfig],
     engine: AutomationEngine,
+    on_broker_start: Optional[Callable[[str, int, int], None]] = None,
+    on_broker_done: Optional[Callable[[RemovalRequest, int, int], None]] = None,
 ) -> RemovalReport:
     """Execute removals for every broker where user data was found.
 
@@ -30,13 +33,14 @@ async def remove_from_brokers(
     broker_map = {b.name: b for b in brokers}
     report = RemovalReport()
 
-    for result in scan_results:
-        if not result.found:
-            continue
+    actionable = [r for r in scan_results if r.found and r.broker_name in broker_map]
+    total = len(actionable)
 
-        config = broker_map.get(result.broker_name)
-        if config is None:
-            continue
+    for i, result in enumerate(actionable):
+        config = broker_map[result.broker_name]
+
+        if on_broker_start:
+            on_broker_start(config.name, i + 1, total)
 
         try:
             request = await _handle_removal(config, profile, result, engine)
@@ -61,6 +65,9 @@ async def remove_from_brokers(
                 report.needs_user_input += 1
             case _:
                 report.automated += 1
+
+        if on_broker_done:
+            on_broker_done(request, i + 1, total)
 
     return report
 
