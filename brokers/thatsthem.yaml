@@ -3,7 +3,7 @@ url: "https://thatsthem.com"
 opt_out_url: "https://thatsthem.com/optout"
 method: "web_form"
 parent_company: null
-captcha: null
+captcha: "custom"
 requires_email_verification: false
 recommended_rescan_days: 60
 search:
@@ -35,6 +35,8 @@ opt_out_steps:
   - action: fill
     selector: "input[name='phone']"
     value: "{{user.phone}}"
+  - action: solve_captcha
+    type: "custom"
   - action: click
     selector: "button[type='submit']"
-notes: "No CAPTCHA or email verification required. Processing takes 7-14 business days. Can also email optout@thatsthem.com."
+notes: "CAPTCHA challenge on both search and opt-out pages (custom 'Quick Humanity Check' with form id='challenge' and validate() JS function). Opt-out flow per Optery guide: search name+city+state → copy record details → scroll to 'Optout' link → paste info into fields → complete CAPTCHA → Submit. If multiple records appear, repeat for each. Search results show name, address, and phone for each record. Selectors (.ThatsThem-people-record) are plausible ThatsThem-prefixed class names but unverifiable via WebFetch due to CAPTCHA wall. Processing takes 7-14 business days. Alternative: email optout@thatsthem.com. Must verify selectors with live Playwright session from US IP."

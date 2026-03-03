@@ -8,8 +8,8 @@ requires_email_verification: true
 recommended_rescan_days: 30
 search:
   url: "https://www.truepeoplesearch.com/results?name={{user.first_name}}%20{{user.last_name}}&citystatezip={{user.city}}%20{{user.state}}"
-  result_selector: ".card-summary"
-  name_selector: ".card-summary h2 a"
+  result_selector: "div.card.card-block"
+  name_selector: "div.card.card-block .card-title a"
   no_results_indicator: "No results found"
 opt_out_steps:
   - action: navigate
@@ -36,4 +36,4 @@ opt_out_steps:
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "truepeoplesearch.com/removal/verify"
-notes: "Data may reappear from new public records. Periodic re-opt-out recommended. Processing takes up to 72 hours."
+notes: "Cloudflare protected, geofenced to US IPs only. JS-rendered — requires full browser rendering (networkidle). WebFetch blocked by Cloudflare. Profile page selectors confirmed from scrape.do: div#personDetails with data-fn/data-ln/data-age attributes, a[data-link-to-more='address'] for addresses with span[itemprop='streetAddress']/span[itemprop='addressLocality']/span[itemprop='addressRegion'], a[data-link-to-more='phone'] with span[itemprop='telephone']. JSON-LD ProfilePage schema in script[type='application/ld+json'] contains phone, email, aliases, relatives. Search results listing uses Bootstrap-style card layout (div.card.card-block / .card-title a) — must verify with live Playwright session from US IP. Data may reappear from new public records. Periodic re-opt-out recommended. Processing takes up to 72 hours."

@@ -1,33 +1,43 @@
 name: "VeriPages"
 url: "https://veripages.com"
-opt_out_url: "https://veripages.com/inner/removal-service"
+opt_out_url: "https://veripages.com/inner/control/privacy"
 method: "web_form"
 parent_company: null
-captcha: null
+captcha: "generic"
 requires_email_verification: true
 recommended_rescan_days: 60
 search:
-  url: "https://veripages.com/people/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
-  result_selector: ".people-card"
-  name_selector: ".people-card .name"
-  no_results_indicator: "No results found"
+  url: "https://veripages.com/name/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
+  result_selector: ".card-user"
+  name_selector: ".card-user__name"
+  no_results_indicator: ".no-records-search"
 opt_out_steps:
   - action: navigate
-    url: "https://veripages.com/people/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
+    url: "https://veripages.com/name/{{user.first_name}}-{{user.last_name}}/{{user.city}}-{{user.state}}"
   - action: click
-    selector: ".people-card a.view-profile"
+    selector: ".card-user a"
   - action: wait_seconds
     wait_seconds: 2
-  - action: click
-    selector: "a.control-profile-btn"
+  - action: capture_url
+    type: "profile_url"
+  - action: navigate
+    url: "https://veripages.com/inner/control/privacy"
+  - action: fill
+    selector: "input[name='url']"
+    value: "{{profile_url}}"
+  - action: fill
+    selector: "input[name='name']"
+    value: "{{user.first_name}} {{user.last_name}}"
   - action: fill
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
+  - action: solve_captcha
+    type: "generic"
   - action: click
     selector: "button[type='submit']"
   - action: await_email
     subject_pattern: "VeriPages.*removal|opt.out"
     timeout_minutes: 30
   - action: click_email_link
-    link_pattern: "veripages.com/.*removal/confirm"
-notes: "Can also email removal@veripages.com with profile URL. Removal takes up to 48 hours."
+    link_pattern: "veripages.com/.*confirm"
+notes: "Search URL uses /name/ path (not /people/). Opt-out page is at /inner/control/privacy (not /inner/removal-service). Opt-out form requires profile URL, full name, email, and CAPTCHA. Submit button labeled 'SUBMIT OPT OUT REQUEST'. Homepage search form uses #FindPersonForm with #topsearch input. Result cards use .card-user class with .card-user__name for names. Address info uses .p-icon_addr class. Age info uses .p-icon_date class. No-results uses .no-records-search. Removal takes up to 48 hours. Can also email removal@veripages.com with profile URL. Must verify opt-out form field names with live Playwright session."

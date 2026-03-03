@@ -1,34 +1,56 @@
-name: "PeopleFinder"
-url: "https://www.peoplefinder.com"
-opt_out_url: "https://www.peoplefinder.com/optout"
+name: "PeopleFinders"
+url: "https://www.peoplefinders.com"
+opt_out_url: "https://www.peoplefinders.com/opt-out"
 method: "web_form"
-parent_company: null
+parent_company: "Intelius"
 captcha: "recaptcha_v2"
-requires_email_verification: false
+requires_email_verification: true
 recommended_rescan_days: 60
 search:
-  url: "https://www.peoplefinder.com/results.php?name={{user.first_name}}+{{user.last_name}}&city={{user.city}}&state={{user.state}}"
+  url: "https://www.peoplefinders.com"
+  search_type: "form_submit"
+  form_fields:
+    - selector: "input[name='firstName']"
+      value: "{{user.first_name}}"
+    - selector: "input[name='lastName']"
+      value: "{{user.last_name}}"
+    - selector: "input[name='city']"
+      value: "{{user.city}}"
+    - selector: "select[name='state']"
+      value: "{{user.state}}"
   result_selector: ".record-result"
   name_selector: ".record-result .name"
   no_results_indicator: "No records found"
 opt_out_steps:
   - action: navigate
-    url: "https://www.peoplefinder.com/optout"
+    url: "https://www.peoplefinders.com/opt-out"
   - action: click
-    selector: "a#public-record-removal"
+    selector: "button:has-text('Next'), a:has-text('Public Records Removal')"
   - action: wait_seconds
     wait_seconds: 2
   - action: fill
-    selector: "input[name='firstName']"
-    value: "{{user.first_name}}"
-  - action: fill
-    selector: "input[name='lastName']"
-    value: "{{user.last_name}}"
+    selector: "input[name='name'], input[name='firstName']"
+    value: "{{user.first_name}} {{user.last_name}}"
   - action: fill
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
   - action: solve_captcha
     type: "recaptcha_v2"
   - action: click
-    selector: "button[type='submit']"
-notes: "URL submission pattern. Use disposable email. Processing takes up to 9 days but usually 24-48 hours. Can also call (800) 718-8997."
+    selector: "button:has-text('Send Request'), button[type='submit']"
+  - action: await_email
+    subject_pattern: "PeopleFinders.*removal|opt.out|confirmation"
+    timeout_minutes: 1440
+  - action: click_email_link
+    link_pattern: "peoplefinders.com/.*opt-out|removal"
+  - action: fill
+    selector: "input[name='firstName']"
+    value: "{{user.first_name}}"
+  - action: fill
+    selector: "input[name='lastName']"
+    value: "{{user.last_name}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button:has-text('Submit'), button[type='submit']"
+notes: "IMPORTANT: Correct domain is peoplefinders.com (with 's'), not peoplefinder.com. Owned by Intelius. Opt-out at /opt-out (not /optout). Requires email verification (corrected from false). Opt-out is a two-step process: 1) submit name+email+CAPTCHA on opt-out page, 2) click email link within 24 hours to access removal form, 3) complete removal form with personal info + CAPTCHA. Search requires form submission (no direct URL-based results). Homepage form has firstName, lastName, city, state fields. Site blocks non-browser requests (403). Processing takes up to 72 hours, usually 24-48. Alternative: call (800) 718-8997. Must verify all selectors with live Playwright session from US IP."

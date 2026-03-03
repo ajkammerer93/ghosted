@@ -609,8 +609,7 @@ class TestErrorHandling:
         store.create(_make_profile(), "passphrase1")
 
         # Corrupt the vault file
-        vault_file = tmp_vault / "vault.enc"
-        vault_file.write_bytes(b"corrupted-data-here")
+        store.vault_file.write_bytes(b"corrupted-data-here")
 
         with pytest.raises(Exception):
             store.load("passphrase1")

@@ -31,4 +31,4 @@ opt_out_steps:
     wait_seconds: 5
   - action: manual_step
     value: "Answer the phone verification call from Whitepages. Enter the verification code shown on screen when prompted."
-notes: "Requires phone verification via automated call. Removal processed within 24 hours."
+notes: "Uses Cloudflare Turnstile protection. JS-rendered — requires full browser rendering (networkidle). WebFetch blocked by Cloudflare. Requires phone verification via automated call. Removal processed within 24 hours. Selectors .serp-card and .serp-card-name are historically used class names. Whitepages also provides JSON-LD structured data on profile pages. Must verify selectors with live Playwright session from US IP."

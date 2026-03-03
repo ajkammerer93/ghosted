@@ -8,8 +8,8 @@ requires_email_verification: true
 recommended_rescan_days: 30
 search:
   url: "https://www.fastpeoplesearch.com/name/{{user.first_name}}-{{user.last_name}}_{{user.city}}-{{user.state}}"
-  result_selector: ".card-block"
-  name_selector: ".card-block .card-title a"
+  result_selector: "div.card.card-block"
+  name_selector: "div.card.card-block .card-title a"
   no_results_indicator: "did not return any results"
 opt_out_steps:
   - action: navigate
@@ -44,4 +44,4 @@ opt_out_steps:
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "fastpeoplesearch.com/removal/confirm"
-notes: "Limit of 5 opt-out requests per email. Updates automatically so data may reappear. Processing takes up to 72 hours."
+notes: "Cloudflare protected, geofenced to US IPs only. JS-rendered — requires full browser rendering (networkidle). WebFetch blocked by Cloudflare. Profile page selectors confirmed from scrape.do: h1#details-header for name+location, h2#age-header for age, div#current_address_section for address (use stripped_strings/next() for street). Person JSON-LD in script[type='application/ld+json'] has telephone array, homeLocation, postalCode. Emails in FAQPage JSON-LD block (bypasses Cloudflare XOR obfuscation). Search results listing uses Bootstrap-style cards (div.card.card-block / .card-title a) — must verify with live Playwright session from US IP. Limit of 5 opt-out requests per email. Data may reappear. Processing takes up to 72 hours."

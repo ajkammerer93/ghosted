@@ -29,7 +29,14 @@ class AutomationEngine:
         """Launch the Playwright browser."""
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        self._context = await self._browser.new_context()
+        self._context = await self._browser.new_context(
+            ignore_https_errors=True,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+        )
 
     async def stop(self) -> None:
         """Close the browser and clean up Playwright."""
@@ -61,9 +68,31 @@ class AutomationEngine:
             search_url = self._substitute_vars(config.search.url, profile)
             await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
 
+            # Wait for JS-rendered results: try to wait for the result selector
+            # or no-results indicator to appear, with a reasonable timeout
+            selectors_to_wait = [config.search.result_selector]
+            if config.search.no_results_indicator and config.search.no_results_indicator.startswith((".", "#", "[")):
+                selectors_to_wait.append(config.search.no_results_indicator)
+
+            try:
+                await page.wait_for_selector(
+                    ", ".join(selectors_to_wait),
+                    timeout=10000,
+                )
+            except Exception:
+                # Selectors didn't appear — page may be blocked or truly empty.
+                # Fall through to the normal check logic below.
+                await page.wait_for_timeout(2000)
+
             # Check for no-results indicator first
             if config.search.no_results_indicator:
-                no_results = await page.query_selector(config.search.no_results_indicator)
+                indicator = config.search.no_results_indicator
+                # If it looks like a CSS selector, use query_selector;
+                # otherwise treat it as page text content to search for
+                if indicator.startswith((".", "#", "[", "//")) or "{" in indicator:
+                    no_results = await page.query_selector(indicator)
+                else:
+                    no_results = await page.get_by_text(indicator).first.is_visible() if await page.get_by_text(indicator).count() > 0 else False
                 if no_results:
                     return ScanResult(broker_name=config.name, found=False)
 
@@ -107,7 +136,7 @@ class AutomationEngine:
         page: Page = await self._context.new_page()
         try:
             for step in config.opt_out_steps:
-                await self._execute_step(step, page, profile, profile_url)
+                profile_url = await self._execute_step(step, page, profile, profile_url)
                 # Random human-like delay between steps
                 await asyncio.sleep(random.uniform(1.0, 3.0))
 
@@ -147,8 +176,8 @@ class AutomationEngine:
         page: Page,
         profile: UserProfile,
         profile_url: str,
-    ) -> None:
-        """Execute a single opt-out step."""
+    ) -> str:
+        """Execute a single opt-out step. Returns the (possibly updated) profile_url."""
         match step.action:
             case "navigate":
                 url = self._substitute_vars(step.url, profile, profile_url)
@@ -161,9 +190,12 @@ class AutomationEngine:
             case "click":
                 await page.click(step.selector)
 
-            case "wait":
+            case "wait" | "wait_seconds":
                 seconds = step.wait_seconds or 2.0
                 await asyncio.sleep(seconds)
+
+            case "capture_url":
+                profile_url = page.url
 
             case "solve_captcha":
                 print(
@@ -177,6 +209,8 @@ class AutomationEngine:
 
             case _:
                 print(f"Warning: unknown action '{step.action}', skipping")
+
+        return profile_url
 
     def _substitute_vars(
         self,

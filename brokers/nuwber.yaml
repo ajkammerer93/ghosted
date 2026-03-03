@@ -15,26 +15,27 @@ opt_out_steps:
   - action: navigate
     url: "https://nuwber.com/search?name={{user.first_name}}%20{{user.last_name}}&city={{user.city}}&state={{user.state}}"
   - action: click
-    selector: ".person-card a"
+    selector: "button:has-text('VIEW DETAILS')"
   - action: wait_seconds
     wait_seconds: 2
   - action: capture_url
     type: "profile_url"
-  - action: navigate
-    url: "https://nuwber.com/removal/link"
+  - action: scroll_to_bottom
+  - action: click
+    selector: "a:has-text('Remove My Info')"
   - action: fill
     selector: "input[name='url']"
     value: "{{profile_url}}"
   - action: click
-    selector: "button.opt-out-btn"
+    selector: "button:has-text('OPT OUT')"
   - action: fill
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
   - action: click
-    selector: "button#confirm-request"
+    selector: "button:has-text('REMOVE')"
   - action: await_email
     subject_pattern: "Nuwber.*removal|confirm"
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "nuwber.com/removal/confirm"
-notes: "Requires profile URL. Use a disposable email for the opt-out. Removal takes up to 48 hours."
+notes: "Cloudflare-protected (returns 403 to WebFetch). Search has three tabs: PERSON, PHONE, ADDRESS. Results appear as record boxes with purple 'VIEW DETAILS' button and green 'GET FULL REPORT' button (avoid). Opt-out flow confirmed via Optery guide: search → view details → copy profile URL → 'Remove My Info' link at footer → paste URL → 'OPT OUT' → enter email → 'REMOVE' → confirm via email ('CONFIRM REQUEST' button in email). Use disposable email. Removal takes up to 48 hours. Search selectors (.person-card) unverifiable via WebFetch. Must verify all selectors with live Playwright session from US IP."

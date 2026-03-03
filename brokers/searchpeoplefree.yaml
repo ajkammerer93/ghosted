@@ -22,18 +22,30 @@ opt_out_steps:
   - action: solve_captcha
     type: "recaptcha_v2"
   - action: click
-    selector: "button#begin-removal"
+    selector: "button#begin-removal, button:has-text('begin removal process')"
   - action: await_email
-    subject_pattern: "SearchPeopleFree.*removal|opt.out"
+    subject_pattern: "SearchPeopleFree.*removal|opt.out|validate"
     timeout_minutes: 30
   - action: click_email_link
-    link_pattern: "searchpeoplefree.com/opt-out/confirm"
+    link_pattern: "searchpeoplefree.com/opt-out/confirm|validate"
   - action: fill
     selector: "input[name='firstName']"
     value: "{{user.first_name}}"
   - action: fill
     selector: "input[name='lastName']"
     value: "{{user.last_name}}"
+  - action: fill
+    selector: "input[name='city']"
+    value: "{{user.city}}"
+  - action: select
+    selector: "select[name='state']"
+    value: "{{user.state}}"
   - action: click
-    selector: "button[type='submit']"
-notes: "Requires email confirmation before accessing removal form. Record removed within 72 hours."
+    selector: "button:has-text('Search'), button[type='submit']"
+  - action: wait_seconds
+    wait_seconds: 5
+  - action: click
+    selector: "a:has-text('continue removal'), button:has-text('continue removal')"
+  - action: click
+    selector: "button:has-text('remove this record'), button[type='submit']"
+notes: "Site aggressively blocks non-browser requests (returns 403). Search URL pattern is /find/{First}-{Last}/{State}. Opt-out is a multi-step process: 1) Enter email + agree terms + solve CAPTCHA + 'Begin removal process', 2) Click email verification link ('Validate my email'), 3) Search for your record by name/city/state, 4) Click 'Continue removal' on the correct listing, 5) Click 'Remove this record'. A green bar appears under the header when in record removal mode. Record removed within 72 hours. All selectors (.result-card, .name-link, button#begin-removal) are best-effort from YAML defaults — must verify with live Playwright session from US IP."

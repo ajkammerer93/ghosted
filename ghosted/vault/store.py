@@ -1,6 +1,7 @@
 """Encrypted vault for storing user profile data."""
 
 import os
+import shutil
 from pathlib import Path
 
 from ghosted.models import UserProfile
@@ -10,14 +11,49 @@ from ghosted.vault.crypto import decrypt, derive_key, encrypt, generate_salt
 class VaultStore:
     """Manages encrypted storage of user profile data.
 
-    Stores an encrypted profile at ~/.ghosted/vault.enc with the
-    salt kept separately at ~/.ghosted/salt.
+    Stores an encrypted profile at ~/.ghosted/profiles/<name>/vault.enc
+    with the salt kept separately.
     """
 
-    def __init__(self, vault_dir: Path | None = None):
-        self.vault_dir = vault_dir or Path.home() / ".ghosted"
+    def __init__(self, vault_dir: Path | None = None, profile_name: str = "default"):
+        base = vault_dir or Path.home() / ".ghosted"
+        self.base_dir = base
+        self.profile_name = profile_name
+        self.vault_dir = base / "profiles" / profile_name
         self.vault_file = self.vault_dir / "vault.enc"
         self.salt_file = self.vault_dir / "salt"
+        # Auto-migrate legacy vault if this is the default profile
+        if profile_name == "default" and not self.vault_file.exists():
+            self._migrate_legacy()
+
+    def _migrate_legacy(self) -> None:
+        """Move a legacy flat vault (~/.ghosted/vault.enc) into profiles/default/."""
+        legacy_vault = self.base_dir / "vault.enc"
+        legacy_salt = self.base_dir / "salt"
+        legacy_history = self.base_dir / "scan_history.db"
+        if legacy_vault.exists() and legacy_salt.exists():
+            self.vault_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(self.vault_dir, 0o700)
+            shutil.move(str(legacy_vault), str(self.vault_file))
+            shutil.move(str(legacy_salt), str(self.salt_file))
+            # Also migrate the history DB if it exists at the old flat path
+            if legacy_history.exists():
+                new_history = self.vault_dir / "scan_history.db"
+                shutil.move(str(legacy_history), str(new_history))
+
+    @classmethod
+    def list_profiles(cls, vault_dir: Path | None = None) -> list[str]:
+        """Return names of all existing profiles."""
+        base = vault_dir or Path.home() / ".ghosted"
+        # Trigger migration for default profile before listing
+        cls(vault_dir=base, profile_name="default")
+        profiles_dir = base / "profiles"
+        if not profiles_dir.exists():
+            return []
+        return sorted(
+            d.name for d in profiles_dir.iterdir()
+            if d.is_dir() and (d / "vault.enc").exists()
+        )
 
     def exists(self) -> bool:
         """Check if a vault already exists."""

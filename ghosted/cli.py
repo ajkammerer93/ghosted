@@ -7,7 +7,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Confirm, Prompt
 
 from ghosted.models import RemovalStatus, UserProfile
@@ -19,19 +19,29 @@ app = typer.Typer(
 )
 console = Console()
 
-VAULT_DIR = Path.home() / ".ghosted"
+BASE_DIR = Path.home() / ".ghosted"
 BROKERS_DIR = Path(__file__).resolve().parent.parent / "brokers"
 
 
-def _require_vault() -> None:
-    """Exit with a helpful message if the vault doesn't exist yet."""
+def _get_vault(profile_name: str = "default"):
     from ghosted.vault.store import VaultStore
+    return VaultStore(BASE_DIR, profile_name=profile_name)
 
-    vault = VaultStore(VAULT_DIR)
+
+def _get_history(profile_name: str = "default"):
+    from ghosted.core.history import HistoryDB
+    db_path = BASE_DIR / "profiles" / profile_name / "scan_history.db"
+    return HistoryDB(db_path)
+
+
+def _require_vault(profile_name: str = "default") -> None:
+    """Exit with a helpful message if the vault doesn't exist yet."""
+    vault = _get_vault(profile_name)
     if not vault.exists():
         console.print(
             Panel(
-                "No vault found. Run [bold cyan]ghosted init[/bold cyan] first to set up your profile.",
+                f"No vault found for profile [bold]{profile_name}[/bold].\n"
+                f"Run [bold cyan]ghosted init --profile {profile_name}[/bold cyan] first.",
                 title="Setup Required",
                 border_style="red",
             )
@@ -39,11 +49,9 @@ def _require_vault() -> None:
         raise typer.Exit(1)
 
 
-def _load_profile(passphrase: str) -> UserProfile:
+def _load_profile(passphrase: str, profile_name: str = "default") -> UserProfile:
     """Load and decrypt the user profile from the vault."""
-    from ghosted.vault.store import VaultStore
-
-    vault = VaultStore(VAULT_DIR)
+    vault = _get_vault(profile_name)
     try:
         return vault.load(passphrase)
     except Exception:
@@ -51,28 +59,30 @@ def _load_profile(passphrase: str) -> UserProfile:
         raise typer.Exit(1)
 
 
-def _get_passphrase() -> str:
+def _get_passphrase(profile_name: str = "default") -> str:
     """Prompt for the vault passphrase."""
-    return Prompt.ask("[bold]Vault passphrase[/bold]", password=True, console=console)
+    label = f"[bold]Vault passphrase[/bold] [dim]({profile_name})[/dim]"
+    return Prompt.ask(label, password=True, console=console)
 
 
 @app.command()
-def init() -> None:
+def init(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile name (e.g., 'spouse', 'parent')."),
+) -> None:
     """Set up your encrypted profile vault."""
-    from ghosted.vault.store import VaultStore
-
-    vault = VaultStore(VAULT_DIR)
+    vault = _get_vault(profile)
 
     if vault.exists():
         overwrite = Confirm.ask(
-            "A vault already exists. Overwrite it?", default=False, console=console
+            f"Profile '{profile}' already exists. Overwrite it?", default=False, console=console
         )
         if not overwrite:
             raise typer.Exit()
 
     console.print(
         Panel(
-            "Welcome to [bold cyan]Ghosted[/bold cyan]!\n\n"
+            f"Welcome to [bold cyan]Ghosted[/bold cyan]!\n\n"
+            f"Setting up profile: [bold]{profile}[/bold]\n"
             "We'll encrypt your personal information locally so it can be used\n"
             "to scan data brokers and submit opt-out requests on your behalf.",
             title="Setup",
@@ -113,7 +123,7 @@ def init() -> None:
 
     previous_addresses = [a.strip() for a in prev_addr.split(",") if a.strip()] if prev_addr else []
 
-    profile = UserProfile(
+    user_profile = UserProfile(
         first_name=first_name,
         last_name=last_name,
         email=email_addr,
@@ -125,14 +135,15 @@ def init() -> None:
         opt_out_email=opt_out_email or None,
     )
 
-    vault.create(profile, passphrase)
+    vault.create(user_profile, passphrase)
 
     console.print()
+    profile_flag = f" --profile {profile}" if profile != "default" else ""
     console.print(
         Panel(
-            f"Profile for [bold]{first_name} {last_name}[/bold] encrypted and saved.\n"
-            f"Vault location: [dim]{VAULT_DIR}[/dim]\n\n"
-            "Run [bold cyan]ghosted scan[/bold cyan] to search data brokers for your info.",
+            f"Profile [bold]{profile}[/bold] for [bold]{first_name} {last_name}[/bold] encrypted and saved.\n"
+            f"Vault location: [dim]{vault.vault_dir}[/dim]\n\n"
+            f"Run [bold cyan]ghosted scan{profile_flag}[/bold cyan] to search data brokers for your info.",
             title="Setup Complete",
             border_style="green",
         )
@@ -141,74 +152,114 @@ def init() -> None:
 
 @app.command()
 def scan(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile to scan for."),
+    all_profiles: bool = typer.Option(False, "--all-profiles", help="Scan for all profiles."),
     headed: bool = typer.Option(False, "--headed", help="Show browser window (requires display server)."),
 ) -> None:
     """Scan data brokers for your personal information."""
-    _require_vault()
-    passphrase = _get_passphrase()
-    profile = _load_profile(passphrase)
-
     from ghosted.brokers.engine import AutomationEngine
     from ghosted.brokers.registry import BrokerRegistry
-    from ghosted.core.history import HistoryDB
     from ghosted.core.scanner import scan_brokers
     from ghosted.utils.reporting import print_scan_report
+    from ghosted.vault.store import VaultStore
 
     registry = BrokerRegistry(BROKERS_DIR)
     broker_list = registry.load_all()
 
     if not broker_list:
-        console.print("[yellow]No broker configs found.[/yellow] Add YAML configs to the brokers/configs/ directory.")
+        console.print("[yellow]No broker configs found.[/yellow]")
         raise typer.Exit()
 
-    console.print(f"\nScanning [bold]{len(broker_list)}[/bold] broker(s)...\n")
+    # Determine which profiles to scan
+    if all_profiles:
+        profile_names = VaultStore.list_profiles(BASE_DIR)
+        if not profile_names:
+            console.print("[yellow]No profiles found.[/yellow] Run [bold cyan]ghosted init[/bold cyan] first.")
+            raise typer.Exit()
+    else:
+        _require_vault(profile)
+        profile_names = [profile]
 
-    async def _run_scan():
-        engine = AutomationEngine(headless=not headed)
-        await engine.start()
-        try:
-            report = await scan_brokers(profile, broker_list, engine)
-        finally:
-            await engine.stop()
-        return report
+    for profile_name in profile_names:
+        _require_vault(profile_name)
+        passphrase = _get_passphrase(profile_name)
+        user_profile = _load_profile(passphrase, profile_name)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        progress.add_task("Scanning brokers...", total=None)
-        report = asyncio.run(_run_scan())
+        if len(profile_names) > 1:
+            console.print(f"\n[bold]━━━ Profile: {profile_name} ({user_profile.first_name} {user_profile.last_name}) ━━━[/bold]")
 
-    print_scan_report(report, console)
+        console.print(f"\nScanning [bold]{len(broker_list)}[/bold] broker(s)...\n")
 
-    # Save to history
-    history = HistoryDB()
-    history.init_db()
-    history.save_scan(report)
-    history.close()
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        )
 
-    console.print("\n[dim]Scan saved to history. Run [bold]ghosted remove[/bold] to opt out.[/dim]")
+        async def _run_scan(up=user_profile):
+            task_id = progress.add_task("Starting...", total=len(broker_list))
+
+            def on_start(name: str, current: int, total: int):
+                progress.update(task_id, description=f"[cyan]{name}[/cyan]")
+
+            def on_done(result, current: int, total: int):
+                s = "[green]found[/green]" if result.found else (
+                    "[red]error[/red]" if result.error else "[dim]clear[/dim]"
+                )
+                progress.console.print(
+                    f"  [{current}/{total}] {result.broker_name}: {s}"
+                )
+                progress.update(task_id, completed=current)
+
+            engine = AutomationEngine(headless=not headed)
+            await engine.start()
+            try:
+                report = await scan_brokers(
+                    up, broker_list, engine,
+                    on_broker_start=on_start,
+                    on_broker_done=on_done,
+                )
+            finally:
+                await engine.stop()
+            return report
+
+        with progress:
+            report = asyncio.run(_run_scan())
+
+        console.print()
+        print_scan_report(report, console)
+
+        # Save to per-profile history
+        history = _get_history(profile_name)
+        history.init_db()
+        history.save_scan(report)
+        history.close()
+
+        profile_flag = f" --profile {profile_name}" if profile_name != "default" else ""
+        console.print(f"\n[dim]Scan saved to history. Run [bold]ghosted remove{profile_flag}[/bold] to opt out.[/dim]")
 
 
 @app.command()
 def remove(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile to remove data for."),
     all_brokers: bool = typer.Option(False, "--all", help="Remove from all brokers where data was found."),
     broker: Optional[str] = typer.Option(None, "--broker", help="Remove from a specific broker by name."),
     headed: bool = typer.Option(False, "--headed", help="Show browser window (requires display server)."),
 ) -> None:
     """Submit opt-out requests to data brokers."""
-    _require_vault()
-    passphrase = _get_passphrase()
-    profile = _load_profile(passphrase)
+    _require_vault(profile)
+    passphrase = _get_passphrase(profile)
+    user_profile = _load_profile(passphrase, profile)
 
     from ghosted.brokers.engine import AutomationEngine
     from ghosted.brokers.registry import BrokerRegistry
-    from ghosted.core.history import HistoryDB
     from ghosted.core.remover import remove_from_brokers
     from ghosted.utils.reporting import print_removal_report
 
-    history = HistoryDB()
+    history = _get_history(profile)
     history.init_db()
 
     latest_scan = history.get_latest_scan()
@@ -247,7 +298,7 @@ def remove(
         engine = AutomationEngine(headless=not headed)
         await engine.start()
         try:
-            report = await remove_from_brokers(profile, found_results, broker_list, engine)
+            report = await remove_from_brokers(user_profile, found_results, broker_list, engine)
         finally:
             await engine.stop()
         return report
@@ -269,11 +320,11 @@ def remove(
 
 
 @app.command()
-def verify() -> None:
+def verify(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile to check verifications for."),
+) -> None:
     """Check for verification emails from brokers."""
-    from ghosted.core.history import HistoryDB
-
-    history = HistoryDB()
+    history = _get_history(profile)
     history.init_db()
 
     removals = history.get_all_removals()
@@ -310,12 +361,13 @@ def verify() -> None:
 
 
 @app.command()
-def status() -> None:
+def status(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile to show status for."),
+) -> None:
     """Show your data removal dashboard."""
-    from ghosted.core.history import HistoryDB
     from ghosted.utils.reporting import print_status_dashboard
 
-    history = HistoryDB()
+    history = _get_history(profile)
     history.init_db()
 
     latest_scan = history.get_latest_scan()
@@ -329,6 +381,7 @@ def status() -> None:
     failed = sum(1 for r in removals if r.status == RemovalStatus.FAILED)
 
     stats = {
+        "profile": profile,
         "total_scanned": latest_scan.total_brokers if latest_scan else 0,
         "found": latest_scan.brokers_with_data if latest_scan else 0,
         "removed": confirmed,
@@ -356,3 +409,31 @@ def brokers() -> None:
         raise typer.Exit()
 
     print_broker_list(broker_list, console)
+
+
+@app.command()
+def profiles() -> None:
+    """List all configured profiles."""
+    from ghosted.vault.store import VaultStore
+    from rich.table import Table
+
+    profile_names = VaultStore.list_profiles(BASE_DIR)
+
+    if not profile_names:
+        console.print("[yellow]No profiles found.[/yellow] Run [bold cyan]ghosted init[/bold cyan] to create one.")
+        raise typer.Exit()
+
+    table = Table(title="Profiles", show_lines=True)
+    table.add_column("Name", style="bold")
+    table.add_column("Vault")
+    table.add_column("History")
+
+    for name in profile_names:
+        vault = _get_vault(name)
+        history_path = BASE_DIR / "profiles" / name / "scan_history.db"
+        vault_status = "[green]encrypted[/green]" if vault.exists() else "[red]missing[/red]"
+        history_status = "[green]has data[/green]" if history_path.exists() else "[dim]empty[/dim]"
+        table.add_row(name, vault_status, history_status)
+
+    console.print(table)
+    console.print(f"\n[dim]Use [bold]--profile NAME[/bold] with any command to target a specific profile.[/dim]")

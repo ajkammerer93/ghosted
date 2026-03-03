@@ -18,30 +18,34 @@ opt_out_steps:
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
   - action: click
-    selector: "button[type='submit']"
+    selector: "input[type='checkbox']"
+  - action: click
+    selector: "button:has-text('Continue')"
   - action: await_email
-    subject_pattern: "PeopleConnect Verification"
+    subject_pattern: "PeopleConnect.*[Vv]erif"
     timeout_minutes: 30
   - action: click_email_link
-    link_pattern: "suppression.peopleconnect.us/verify"
+    link_pattern: "suppression.peopleconnect.us"
+  - action: fill
+    selector: "input[name='dateOfBirth']"
+    value: "{{user.date_of_birth}}"
+  - action: click
+    selector: "input[type='checkbox']"
+  - action: click
+    selector: "button:has-text('Continue')"
   - action: fill
     selector: "input[name='firstName']"
     value: "{{user.first_name}}"
   - action: fill
     selector: "input[name='lastName']"
     value: "{{user.last_name}}"
-  - action: fill
-    selector: "input[name='dateOfBirth']"
-    value: "{{user.date_of_birth}}"
   - action: click
-    selector: "button#search-records"
-  - action: wait_seconds
-    wait_seconds: 5
+    selector: "input[type='checkbox']"
   - action: click
-    selector: "input[type='checkbox'].select-all-records"
+    selector: "button:has-text('Continue')"
   - action: select
     selector: "select[name='desired_behavior']"
     value: "Suppressed"
   - action: click
-    selector: "button#save-suppression"
-notes: "Covers Intelius, TruthFinder, InstantCheckmate, US Search, Classmates.com, ZabaSearch, AnyWho, Addresses.com, PublicRecords.com, PeopleLookup, iSearch, PeopleFinder, AddressSearch.com. Requires date of birth for identity confirmation. Suppression takes up to 10 business days."
+    selector: "button:has-text('Save')"
+notes: "Covers Intelius, TruthFinder, InstantCheckmate, US Search, Classmates.com, ZabaSearch, AnyWho, Addresses.com, PublicRecords.com, PeopleLookup, iSearch, PeopleFinder, AddressSearch.com. Suppression portal is Cloudflare-protected. Opt-out flow confirmed via Optery guide: email → verify email → DOB → legal name → select 'Suppressed' → Save. Each step has a checkbox + Continue button. Suppression takes up to 10 business days. Search selectors (.record-card) are for Intelius and cannot be verified via WebFetch (bot-protected). Must verify all selectors with live Playwright session from US IP."

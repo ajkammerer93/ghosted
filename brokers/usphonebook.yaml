@@ -17,8 +17,10 @@ opt_out_steps:
   - action: fill
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
-  - action: solve_captcha
-    type: "recaptcha_v2"
+  - action: click
+    selector: "input[type='checkbox']"
+  - action: click
+    selector: "input[type='checkbox']:nth-of-type(2)"
   - action: click
     selector: "button[type='submit']"
   - action: wait_seconds
@@ -27,14 +29,14 @@ opt_out_steps:
     selector: "input[name='phone']"
     value: "{{user.phone}}"
   - action: click
-    selector: "button#search-records"
+    selector: "button:has-text('GET DETAILS FOR')"
   - action: wait_seconds
     wait_seconds: 3
   - action: click
-    selector: "button.remove-record"
+    selector: "button:has-text('Remove Record')"
   - action: await_email
     subject_pattern: "USPhoneBook.*opt.out|removal"
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "usphonebook.com/opt-out/confirm"
-notes: "Data removal takes up to 72 hours. Data may reappear as databases refresh. Can also call (888) 747-4095."
+notes: "Completely blocked from WebFetch (bot protection). Opt-out flow per Optery/security.org guides: enter email + check two agreement boxes → submit → search for your listing → 'GET DETAILS FOR' button (previously labeled 'VIEW FULL ADDRESS & PHONE') → orange 'Remove Record' button → confirmation email (link expires in 24 hours). Processing within 72 hours. USPhoneBook maintains internal suppression list. Alternative opt-out URLs: /opt-out (confirmed) and /removal (per Optery). Search selectors (.result-list .card) unverifiable via WebFetch. Data may reappear as databases refresh. Can also call (888) 747-4095. Must verify all selectors with live Playwright session from US IP."

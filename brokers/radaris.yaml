@@ -1,24 +1,38 @@
 name: "Radaris"
 url: "https://radaris.com"
 opt_out_url: "https://radaris.com/control-privacy"
-method: "email"
+method: "web_form"
 parent_company: null
-captcha: null
+captcha: "recaptcha_v2"
 requires_email_verification: true
 recommended_rescan_days: 60
 email_template: "ccpa_deletion"
 search:
   url: "https://radaris.com/p/{{user.first_name}}/{{user.last_name}}/"
-  result_selector: ".card-result"
-  name_selector: ".card-result .name"
+  result_selector: "td.names"
+  name_selector: "td.names a"
   no_results_indicator: "No results found"
 opt_out_steps:
-  - action: send_email
-    value: "customer-service@radaris.com"
-    type: "ccpa_deletion"
+  - action: navigate
+    url: "https://radaris.com"
+  - action: click
+    selector: "a:has-text('Do Not Sell My Info')"
+  - action: fill
+    selector: "input[name='url']"
+    value: "{{profile_url}}"
+  - action: fill
+    selector: "input[name='name']"
+    value: "{{user.first_name}} {{user.last_name}}"
+  - action: fill
+    selector: "input[name='email']"
+    value: "{{user.opt_out_email}}"
+  - action: solve_captcha
+    type: "recaptcha_v2"
+  - action: click
+    selector: "button:has-text('Send Request')"
   - action: await_email
-    subject_pattern: "Radaris.*removal|opt.out"
+    subject_pattern: "Radaris.*removal|opt.out|confirm"
     timeout_minutes: 60
   - action: click_email_link
     link_pattern: "radaris.com/.*confirm"
-notes: "Email removal preferred. Can also use web form at radaris.com/control-privacy. Verification email may take 30+ minutes. Results update within 24 hours after confirmation."
+notes: "Radaris is notoriously difficult for opt-outs (Optery flags as 'dishonorable'). Two methods: (1) web form via 'Do Not Sell My Info' footer link — requires profile URL, name, email, CAPTCHA, and 'Send Request' button, (2) email to customer-service@radaris.com with CCPA deletion request. Search at /p/First/Last/ is heavily JS-rendered. Page uses table-based layout with .names class (confirmed via WebFetch CSS analysis). Form IDs: #IdfindPersonForm, .form-submitter. Results show 'View Profile' buttons. Must verify selectors with live Playwright session from US IP."

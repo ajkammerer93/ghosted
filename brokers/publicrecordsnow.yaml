@@ -6,6 +6,7 @@ parent_company: null
 captcha: "recaptcha_v2"
 requires_email_verification: false
 recommended_rescan_days: 60
+active: false
 search:
   url: "https://www.publicrecordsnow.com/name/{{user.first_name}}-{{user.last_name}}/{{user.state}}"
   result_selector: ".record-item"
@@ -30,4 +31,4 @@ opt_out_steps:
     type: "recaptcha_v2"
   - action: click
     selector: "button[type='submit']"
-notes: "Listing removed immediately after successful opt-out request."
+notes: "INACTIVE — SSL certificate has expired as of March 2026. WebFetch returns 'certificate has expired' error. Site is effectively down and inaccessible. Marked active: false until site comes back online. All selectors are unverified placeholders from initial config. If site recovers, all selectors must be verified with live Playwright session."

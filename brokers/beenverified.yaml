@@ -3,13 +3,13 @@ url: "https://www.beenverified.com"
 opt_out_url: "https://www.beenverified.com/app/optout/search"
 method: "web_form"
 parent_company: null
-captcha: "recaptcha_v2"
+captcha: "cloudflare_turnstile"
 requires_email_verification: true
 recommended_rescan_days: 30
 search:
   url: "https://www.beenverified.com/app/optout/search"
-  result_selector: ".optout-result"
-  name_selector: ".optout-result-name"
+  result_selector: ".optout-data"
+  name_selector: ".optout-data .optout-data-name"
   no_results_indicator: "No records found"
 opt_out_steps:
   - action: navigate
@@ -33,7 +33,7 @@ opt_out_steps:
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
   - action: solve_captcha
-    type: "recaptcha_v2"
+    type: "cloudflare_turnstile"
   - action: click
     selector: "button#confirm-optout"
   - action: await_email
@@ -41,4 +41,4 @@ opt_out_steps:
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "beenverified.com/app/optout/verify"
-notes: "Also manages opt-outs for PeopleLooker. Removal takes 24-72 hours."
+notes: "JS-rendered form page — search results appear dynamically after form submission (requires networkidle wait). Uses Cloudflare Turnstile CAPTCHA (not reCAPTCHA). WebFetch blocked by Cloudflare. Form confirmed to have firstName, lastName, state fields per opt-out guides. Only allows one opt-out per email address. Also manages opt-outs for PeopleLooker. Removal takes 24-72 hours. Alternate opt-out URL: https://www.beenverified.com/svc/optout/search/optouts. Must verify result selectors (.optout-data) with live Playwright session from US IP."

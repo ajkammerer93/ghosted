@@ -1,19 +1,19 @@
 name: "PeopleLooker"
 url: "https://www.peoplelooker.com"
-opt_out_url: "https://www.peoplelooker.com/f/optout/search"
+opt_out_url: "https://www.peoplelooker.com/app/optout/search"
 method: "web_form"
-parent_company: null
-captcha: null
+parent_company: "The Lifetime Value Company"
+captcha: "cloudflare_turnstile"
 requires_email_verification: true
 recommended_rescan_days: 30
 search:
-  url: "https://www.peoplelooker.com/f/optout/search"
-  result_selector: ".optout-result"
-  name_selector: ".optout-result-name"
+  url: "https://www.peoplelooker.com/app/optout/search"
+  result_selector: ".optout-data"
+  name_selector: ".optout-data .optout-data-name"
   no_results_indicator: "No records found"
 opt_out_steps:
   - action: navigate
-    url: "https://www.peoplelooker.com/f/optout/search"
+    url: "https://www.peoplelooker.com/app/optout/search"
   - action: fill
     selector: "input[name='firstName']"
     value: "{{user.first_name}}"
@@ -32,11 +32,13 @@ opt_out_steps:
   - action: fill
     selector: "input[name='email']"
     value: "{{user.opt_out_email}}"
+  - action: solve_captcha
+    type: "cloudflare_turnstile"
   - action: click
     selector: "button#confirm-optout"
   - action: await_email
-    subject_pattern: "PeopleLooker.*opt.out|removal"
+    subject_pattern: "PeopleLooker.*opt.out|removal|Opt-Out Verification"
     timeout_minutes: 30
   - action: click_email_link
     link_pattern: "peoplelooker.com/.*optout/verify"
-notes: "Managed by BeenVerified. Opt-out from BeenVerified may also cover PeopleLooker. Results update within 24 hours."
+notes: "Owned by The Lifetime Value Company (same parent as BeenVerified). Opt-out URL corrected to /app/optout/search (was /f/optout/search which 404s). Opt-out system is managed by/shared with BeenVerified — opting out of BeenVerified also covers PeopleLooker. Result selectors (.optout-data, .optout-data-name) mirrored from BeenVerified's opt-out page since they share the same backend. Uses Cloudflare Turnstile CAPTCHA (not no-CAPTCHA as previously listed). For CA/CO/CT/VA residents, state-specific opt-out forms apply. Removal takes up to 24 hours. Homepage CSS classes: .search-form, .input, .input-dropdown, .btn-standard. Must verify selectors with live Playwright session."
