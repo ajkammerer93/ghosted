@@ -123,6 +123,18 @@ def init(
 
     previous_addresses = [a.strip() for a in prev_addr.split(",") if a.strip()] if prev_addr else []
 
+    # Optional IMAP configuration
+    imap_host = None
+    imap_port = 993
+    imap_user = None
+    imap_password = None
+    if Confirm.ask("[bold]Configure email verification (IMAP)?[/bold]", default=False, console=console):
+        imap_host = Prompt.ask("[bold]IMAP host[/bold] [dim](e.g. imap.gmail.com)[/dim]", console=console)
+        imap_port_str = Prompt.ask("[bold]IMAP port[/bold]", default="993", console=console)
+        imap_port = int(imap_port_str)
+        imap_user = Prompt.ask("[bold]IMAP username[/bold] [dim](email address)[/dim]", console=console)
+        imap_password = Prompt.ask("[bold]IMAP password[/bold] [dim](app password)[/dim]", password=True, console=console)
+
     user_profile = UserProfile(
         first_name=first_name,
         last_name=last_name,
@@ -133,6 +145,10 @@ def init(
         date_of_birth=dob or None,
         previous_addresses=previous_addresses,
         opt_out_email=opt_out_email or None,
+        imap_host=imap_host or None,
+        imap_port=imap_port,
+        imap_user=imap_user or None,
+        imap_password=imap_password or None,
     )
 
     vault.create(user_profile, passphrase)
@@ -344,8 +360,13 @@ def remove(
 @app.command()
 def verify(
     profile: str = typer.Option("default", "--profile", "-p", help="Profile to check verifications for."),
+    headed: bool = typer.Option(False, "--headed", help="Show browser window when clicking verification links."),
 ) -> None:
-    """Check for verification emails from brokers."""
+    """Check for verification emails and click confirmation links."""
+    _require_vault(profile)
+    passphrase = _get_passphrase(profile)
+    user_profile = _load_profile(passphrase, profile)
+
     history = _get_history(profile)
     history.init_db()
 
@@ -357,28 +378,133 @@ def verify(
         history.close()
         return
 
-    console.print(
-        Panel(
-            f"[bold yellow]{len(awaiting)}[/bold yellow] removal(s) awaiting email verification.\n\n"
-            "To automatically check your email, configure IMAP in your vault.\n"
-            "Otherwise, check your inbox and click the verification links manually.",
-            title="Pending Verifications",
-            border_style="yellow",
-        )
-    )
-
     from rich.table import Table
 
-    table = Table(show_lines=True)
-    table.add_column("Broker", style="bold")
-    table.add_column("Status")
-    table.add_column("Submitted")
+    # If IMAP not configured, show stub and exit
+    if not user_profile.imap_host or not user_profile.imap_user or not user_profile.imap_password:
+        console.print(
+            Panel(
+                f"[bold yellow]{len(awaiting)}[/bold yellow] removal(s) awaiting email verification.\n\n"
+                "To automatically check your email, configure IMAP:\n"
+                f"  [bold cyan]ghosted configure-email --profile {profile}[/bold cyan]\n\n"
+                "Otherwise, check your inbox and click the verification links manually.",
+                title="Pending Verifications",
+                border_style="yellow",
+            )
+        )
 
-    for r in awaiting:
-        submitted = r.submitted_at.strftime("%Y-%m-%d %H:%M") if r.submitted_at else "Unknown"
-        table.add_row(r.broker_name, "Awaiting Verification", submitted)
+        table = Table(show_lines=True)
+        table.add_column("Broker", style="bold")
+        table.add_column("Status")
+        table.add_column("Submitted")
+
+        for r in awaiting:
+            submitted = r.submitted_at.strftime("%Y-%m-%d %H:%M") if r.submitted_at else "Unknown"
+            table.add_row(r.broker_name, "Awaiting Verification", submitted)
+
+        console.print(table)
+        history.close()
+        return
+
+    # Build broker_patterns from YAML configs
+    from ghosted.brokers.registry import BrokerRegistry
+
+    registry = BrokerRegistry(BROKERS_DIR)
+    broker_list = registry.load_all()
+
+    awaiting_names = {r.broker_name for r in awaiting}
+    broker_patterns: dict[str, dict] = {}
+    for bc in broker_list:
+        if bc.name not in awaiting_names:
+            continue
+        if not bc.requires_email_verification:
+            continue
+        subject_pat = None
+        link_pat = None
+        for step in bc.opt_out_steps:
+            if step.action == "await_email" and step.subject_pattern:
+                subject_pat = step.subject_pattern
+            if step.action == "click_email_link" and step.link_pattern:
+                link_pat = step.link_pattern
+        if subject_pat:
+            broker_patterns[bc.name] = {"subject": subject_pat, "link_pattern": link_pat or ""}
+
+    if not broker_patterns:
+        console.print("[yellow]No broker email patterns found for pending verifications.[/yellow]")
+        history.close()
+        return
+
+    # Check inbox
+    from ghosted.core.emailer import EmailConfig, check_verification_emails, click_verification_link
+
+    email_config = EmailConfig(
+        imap_host=user_profile.imap_host,
+        imap_port=user_profile.imap_port,
+        smtp_host="",
+        smtp_port=587,
+        email=user_profile.imap_user,
+        password=user_profile.imap_password,
+    )
+
+    console.print(f"Checking inbox for verification emails from [bold]{len(broker_patterns)}[/bold] broker(s)...\n")
+
+    found_emails = asyncio.run(check_verification_emails(email_config, broker_patterns))
+
+    if not found_emails:
+        console.print("[yellow]No verification emails found yet.[/yellow] Check again later.")
+        history.close()
+        return
+
+    # Display found emails
+    table = Table(title="Verification Emails Found", show_lines=True)
+    table.add_column("Broker", style="bold")
+    table.add_column("Subject")
+    table.add_column("Link")
+
+    for em in found_emails:
+        link_display = "[green]found[/green]" if em["verification_url"] else "[red]not found[/red]"
+        table.add_row(em["broker_name"], em["subject"], link_display)
 
     console.print(table)
+    console.print()
+
+    # Click verification links
+    verified = 0
+    failed = 0
+    from datetime import datetime
+
+    for em in found_emails:
+        url = em["verification_url"]
+        if not url:
+            console.print(f"  {em['broker_name']}: [red]no link found in email[/red]")
+            failed += 1
+            continue
+
+        console.print(f"  {em['broker_name']}: clicking verification link...", end=" ")
+        success = asyncio.run(click_verification_link(url, headless=not headed))
+
+        if success:
+            console.print("[green]verified[/green]")
+            # Update removal status
+            removal = history.get_removal_status(em["broker_name"])
+            if removal:
+                removal.status = RemovalStatus.VERIFIED
+                removal.verified_at = datetime.now()
+                history.save_removal(removal)
+            verified += 1
+        else:
+            console.print("[red]failed[/red]")
+            failed += 1
+
+    console.print()
+    console.print(
+        Panel(
+            f"[green]{verified}[/green] verified, [red]{failed}[/red] failed, "
+            f"[yellow]{len(awaiting) - len(found_emails)}[/yellow] still pending",
+            title="Verification Summary",
+            border_style="green" if verified > 0 else "yellow",
+        )
+    )
     history.close()
 
 
@@ -476,6 +602,63 @@ def destroy_profile(
 
     count = len(profile_names)
     console.print(f"\n[green]Done.[/green] {count} profile(s) deleted.")
+
+
+@app.command("configure-email")
+def configure_email(
+    profile: str = typer.Option("default", "--profile", "-p", help="Profile to configure."),
+) -> None:
+    """Add or update IMAP email configuration on an existing profile."""
+    _require_vault(profile)
+    passphrase = _get_passphrase(profile)
+    user_profile = _load_profile(passphrase, profile)
+
+    console.print(
+        Panel(
+            "Configure IMAP to let [bold cyan]ghosted verify[/bold cyan] automatically\n"
+            "check your inbox for broker verification emails.",
+            title="Email Configuration",
+            border_style="cyan",
+        )
+    )
+
+    imap_host = Prompt.ask(
+        "[bold]IMAP host[/bold] [dim](e.g. imap.gmail.com)[/dim]",
+        default=user_profile.imap_host or "",
+        console=console,
+    )
+    imap_port_str = Prompt.ask(
+        "[bold]IMAP port[/bold]",
+        default=str(user_profile.imap_port),
+        console=console,
+    )
+    imap_user = Prompt.ask(
+        "[bold]IMAP username[/bold] [dim](email address)[/dim]",
+        default=user_profile.imap_user or "",
+        console=console,
+    )
+    imap_password = Prompt.ask(
+        "[bold]IMAP password[/bold] [dim](app password)[/dim]",
+        password=True,
+        console=console,
+    )
+
+    user_profile.imap_host = imap_host or None
+    user_profile.imap_port = int(imap_port_str)
+    user_profile.imap_user = imap_user or None
+    user_profile.imap_password = imap_password or None
+
+    vault = _get_vault(profile)
+    vault.create(user_profile, passphrase)
+
+    console.print(
+        Panel(
+            "IMAP configuration saved to vault.\n"
+            "Run [bold cyan]ghosted verify[/bold cyan] to check for verification emails.",
+            title="Done",
+            border_style="green",
+        )
+    )
 
 
 @app.command()

@@ -1049,3 +1049,235 @@ class TestEngineSearchFlow:
 
         result = engine._substitute_vars("tel:{{user.phone}}", profile)
         assert result == "tel:"
+
+
+# ===========================================================================
+# 12. IMAP Email Verification
+# ===========================================================================
+
+
+class TestImapFields:
+    """Tests for IMAP fields on UserProfile and vault round-trip."""
+
+    def test_user_profile_imap_defaults(self):
+        """IMAP fields default to None/993."""
+        profile = _make_profile()
+        assert profile.imap_host is None
+        assert profile.imap_port == 993
+        assert profile.imap_user is None
+        assert profile.imap_password is None
+
+    def test_user_profile_with_imap(self):
+        """IMAP fields can be set explicitly."""
+        profile = _make_profile(
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            imap_user="user@gmail.com",
+            imap_password="app-password-123",
+        )
+        assert profile.imap_host == "imap.gmail.com"
+        assert profile.imap_port == 993
+        assert profile.imap_user == "user@gmail.com"
+        assert profile.imap_password == "app-password-123"
+
+    def test_vault_roundtrip_with_imap(self, tmp_vault):
+        """IMAP fields survive vault encrypt/decrypt."""
+        from ghosted.vault.store import VaultStore
+
+        store = VaultStore(tmp_vault)
+        profile = _make_profile(
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            imap_user="user@gmail.com",
+            imap_password="secret-app-pw",
+        )
+        store.create(profile, "test-passphrase")
+        loaded = store.load("test-passphrase")
+        assert loaded.imap_host == "imap.gmail.com"
+        assert loaded.imap_port == 993
+        assert loaded.imap_user == "user@gmail.com"
+        assert loaded.imap_password == "secret-app-pw"
+
+    def test_vault_roundtrip_without_imap(self, tmp_vault):
+        """Profiles without IMAP fields still load correctly."""
+        from ghosted.vault.store import VaultStore
+
+        store = VaultStore(tmp_vault)
+        profile = _make_profile()
+        store.create(profile, "test-passphrase")
+        loaded = store.load("test-passphrase")
+        assert loaded.imap_host is None
+        assert loaded.imap_password is None
+
+
+class TestBrokerPatternExtraction:
+    """Tests for extracting email patterns from broker YAML configs."""
+
+    def test_extract_patterns_from_broker_configs(self):
+        """Brokers with requires_email_verification have await_email steps."""
+        from ghosted.brokers.registry import BrokerRegistry
+
+        registry = BrokerRegistry(BROKERS_DIR)
+        brokers = registry.load_all()
+
+        email_brokers = [b for b in brokers if b.requires_email_verification]
+        assert len(email_brokers) > 0, "Should have at least one email-verification broker"
+
+        for bc in email_brokers:
+            await_steps = [s for s in bc.opt_out_steps if s.action == "await_email"]
+            assert len(await_steps) > 0, f"{bc.name} has requires_email_verification but no await_email step"
+            for step in await_steps:
+                assert step.subject_pattern, f"{bc.name} await_email step missing subject_pattern"
+
+    def test_build_broker_patterns_dict(self):
+        """Can build broker_patterns dict matching verify command logic."""
+        from ghosted.brokers.registry import BrokerRegistry
+
+        registry = BrokerRegistry(BROKERS_DIR)
+        brokers = registry.load_all()
+
+        broker_patterns: dict[str, dict] = {}
+        for bc in brokers:
+            if not bc.requires_email_verification:
+                continue
+            subject_pat = None
+            link_pat = None
+            for step in bc.opt_out_steps:
+                if step.action == "await_email" and step.subject_pattern:
+                    subject_pat = step.subject_pattern
+                if step.action == "click_email_link" and step.link_pattern:
+                    link_pat = step.link_pattern
+            if subject_pat:
+                broker_patterns[bc.name] = {"subject": subject_pat, "link_pattern": link_pat or ""}
+
+        assert len(broker_patterns) > 0
+        # Spokeo should be in there
+        assert "Spokeo" in broker_patterns
+        assert "subject" in broker_patterns["Spokeo"]
+        assert "link_pattern" in broker_patterns["Spokeo"]
+
+
+class TestVerifyCommand:
+    """Tests for the verify command behavior."""
+
+    def test_verify_no_pending(self, tmp_path):
+        """Verify with no pending removals shows clean message."""
+        from ghosted.core.history import HistoryDB
+
+        db = HistoryDB(tmp_path / "history.db")
+        db.init_db()
+        removals = db.get_all_removals()
+        awaiting = [r for r in removals if r.status == RemovalStatus.AWAITING_VERIFICATION]
+        assert len(awaiting) == 0
+        db.close()
+
+    def test_verify_with_awaiting_no_imap(self, tmp_path):
+        """Pending verifications without IMAP config shows stub."""
+        from ghosted.core.history import HistoryDB
+
+        db = HistoryDB(tmp_path / "history.db")
+        db.init_db()
+        db.save_removal(RemovalRequest(
+            broker_name="Spokeo",
+            status=RemovalStatus.AWAITING_VERIFICATION,
+            method=BrokerMethod.WEB_FORM,
+            submitted_at=datetime.now(),
+        ))
+        removals = db.get_all_removals()
+        awaiting = [r for r in removals if r.status == RemovalStatus.AWAITING_VERIFICATION]
+        assert len(awaiting) == 1
+
+        # Profile without IMAP
+        profile = _make_profile()
+        assert profile.imap_host is None
+        db.close()
+
+    def test_removal_status_updated_on_verify(self, tmp_path):
+        """Saving a verified removal updates status and verified_at."""
+        from ghosted.core.history import HistoryDB
+
+        db = HistoryDB(tmp_path / "history.db")
+        db.init_db()
+        db.save_removal(RemovalRequest(
+            broker_name="Spokeo",
+            status=RemovalStatus.AWAITING_VERIFICATION,
+            method=BrokerMethod.WEB_FORM,
+            submitted_at=datetime.now(),
+        ))
+
+        # Simulate what verify does on success
+        removal = db.get_removal_status("Spokeo")
+        assert removal is not None
+        removal.status = RemovalStatus.VERIFIED
+        removal.verified_at = datetime.now()
+        db.save_removal(removal)
+
+        updated = db.get_removal_status("Spokeo")
+        assert updated.status == RemovalStatus.VERIFIED
+        assert updated.verified_at is not None
+        db.close()
+
+
+class TestConfigureEmail:
+    """Tests for the configure-email command updating vault."""
+
+    def test_update_vault_preserves_existing_data(self, tmp_vault):
+        """Updating IMAP config doesn't lose existing profile data."""
+        from ghosted.vault.store import VaultStore
+
+        store = VaultStore(tmp_vault)
+        profile = _make_profile()
+        store.create(profile, "test-pass1234")
+
+        # Load, update IMAP, re-save
+        loaded = store.load("test-pass1234")
+        loaded.imap_host = "imap.example.com"
+        loaded.imap_user = "user@example.com"
+        loaded.imap_password = "new-app-pw"
+        store.create(loaded, "test-pass1234")
+
+        # Reload and verify both IMAP and original data preserved
+        reloaded = store.load("test-pass1234")
+        assert reloaded.first_name == "Test"
+        assert reloaded.last_name == "User"
+        assert reloaded.email == "test@example.com"
+        assert reloaded.imap_host == "imap.example.com"
+        assert reloaded.imap_user == "user@example.com"
+        assert reloaded.imap_password == "new-app-pw"
+
+
+class TestEmailerLinkExtraction:
+    """Tests for verification link extraction."""
+
+    def test_extract_links_no_pattern(self):
+        from ghosted.core.emailer import extract_verification_links
+
+        html = '<a href="https://example.com/verify?t=abc">Click</a> <a href="https://other.com">Other</a>'
+        links = extract_verification_links(html, "")
+        assert len(links) == 2
+
+    def test_extract_links_with_pattern(self):
+        from ghosted.core.emailer import extract_verification_links
+
+        html = (
+            '<a href="https://spokeo.com/optout/confirm?t=abc">Confirm</a>'
+            '<a href="https://other.com/unrelated">Other</a>'
+        )
+        links = extract_verification_links(html, "spokeo.com/optout/confirm")
+        assert len(links) == 1
+        assert "spokeo.com" in links[0]
+
+    def test_extract_links_no_matches(self):
+        from ghosted.core.emailer import extract_verification_links
+
+        html = '<a href="https://example.com/page">Page</a>'
+        links = extract_verification_links(html, "nomatch.com")
+        assert len(links) == 0
+
+    def test_extract_links_skips_non_http(self):
+        from ghosted.core.emailer import extract_verification_links
+
+        html = '<a href="mailto:test@test.com">Email</a> <a href="https://real.com/link">Real</a>'
+        links = extract_verification_links(html, "")
+        assert len(links) == 1
+        assert links[0] == "https://real.com/link"

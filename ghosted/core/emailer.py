@@ -38,13 +38,13 @@ async def connect_imap(config: EmailConfig) -> imaplib.IMAP4_SSL:
 
 async def check_verification_emails(
     config: EmailConfig,
-    broker_patterns: dict[str, str],
+    broker_patterns: dict[str, dict],
 ) -> list[dict]:
     """Search for unseen verification emails matching broker subject patterns.
 
     Args:
         config: Email credentials and server info.
-        broker_patterns: Mapping of broker_name -> subject search pattern.
+        broker_patterns: Mapping of broker_name -> {"subject": ..., "link_pattern": ...}.
 
     Returns:
         List of dicts with broker_name, subject, verification_url, received_at.
@@ -58,8 +58,13 @@ async def check_verification_emails(
         conn.select("INBOX")
 
         results = []
-        for broker_name, pattern in broker_patterns.items():
-            sanitized = pattern.replace('"', "").replace("\\", "")
+        for broker_name, patterns in broker_patterns.items():
+            subject_pattern = patterns.get("subject", "")
+            link_pat = patterns.get("link_pattern", "")
+            if not subject_pattern:
+                continue
+
+            sanitized = subject_pattern.replace('"', "").replace("\\", "")
             _, msg_nums = conn.search(None, "UNSEEN", f'SUBJECT "{sanitized}"')
             if not msg_nums or not msg_nums[0]:
                 continue
@@ -72,7 +77,7 @@ async def check_verification_emails(
                 subject = msg.get("Subject", "")
                 date_str = msg.get("Date", "")
                 body_html = _get_html_body(msg)
-                links = extract_verification_links(body_html, "") if body_html else []
+                links = extract_verification_links(body_html, link_pat) if body_html else []
 
                 results.append({
                     "broker_name": broker_name,
@@ -104,6 +109,24 @@ def extract_verification_links(html_body: str, link_pattern: str) -> list[str]:
 
     filtered = [link for link in all_links if re.search(link_pattern, link)]
     return filtered
+
+
+async def click_verification_link(url: str, headless: bool = True) -> bool:
+    """Navigate to a verification URL via Patchright and return success."""
+    try:
+        from patchright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=headless)
+            page = await browser.new_page()
+            try:
+                response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(2000)
+                return response is not None and response.status < 400
+            finally:
+                await browser.close()
+    except Exception:
+        return False
 
 
 async def send_legal_email(
