@@ -1,8 +1,10 @@
 """Ghosted CLI — Remove your personal data from the internet."""
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import typer
 from rich.console import Console
@@ -131,7 +133,11 @@ def init(
     if Confirm.ask("[bold]Configure email verification (IMAP)?[/bold]", default=False, console=console):
         imap_host = Prompt.ask("[bold]IMAP host[/bold] [dim](e.g. imap.gmail.com)[/dim]", console=console)
         imap_port_str = Prompt.ask("[bold]IMAP port[/bold]", default="993", console=console)
-        imap_port = int(imap_port_str)
+        try:
+            imap_port = int(imap_port_str)
+        except ValueError:
+            console.print("[bold red]IMAP port must be a number.[/bold red]")
+            raise typer.Exit(1)
         imap_user = Prompt.ask("[bold]IMAP username[/bold] [dim](email address)[/dim]", console=console)
         imap_password = Prompt.ask("[bold]IMAP password[/bold] [dim](app password)[/dim]", password=True, console=console)
 
@@ -357,6 +363,95 @@ def remove(
     history.close()
 
 
+async def _run_verify(
+    user_profile: UserProfile,
+    broker_patterns: dict[str, dict],
+    headed: bool,
+) -> list[dict]:
+    """Check verification emails and click all confirmation links in a single browser session.
+
+    Returns list of dicts with broker_name, success, url, subject.
+    """
+    from ghosted.core.emailer import EmailConfig, check_verification_emails
+
+    email_config = EmailConfig(
+        imap_host=user_profile.imap_host,
+        imap_port=user_profile.imap_port,
+        email=user_profile.imap_user,
+        password=user_profile.imap_password,
+    )
+
+    found_emails = await check_verification_emails(email_config, broker_patterns)
+    if not found_emails:
+        return []
+
+    # Collect emails that have clickable URLs
+    to_click = [(em, em["verification_url"]) for em in found_emails if em.get("verification_url")]
+
+    results = []
+    # Add entries for emails without links
+    for em in found_emails:
+        if not em.get("verification_url"):
+            results.append({
+                "broker_name": em["broker_name"],
+                "subject": em["subject"],
+                "url": None,
+                "success": False,
+            })
+
+    if to_click:
+        from patchright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=not headed)
+            page = await browser.new_page()
+            try:
+                for em, url in to_click:
+                    # Extract allowed domain from broker's link_pattern
+                    link_pat = broker_patterns.get(em["broker_name"], {}).get("link_pattern", "")
+                    allowed_domain = ""
+                    if link_pat:
+                        parsed = urlparse(link_pat) if "://" in link_pat else None
+                        if parsed and parsed.hostname:
+                            allowed_domain = parsed.hostname
+                        else:
+                            # Try to extract domain from regex pattern
+                            domain_match = __import__("re").search(r'(?:https?://)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', link_pat)
+                            if domain_match:
+                                allowed_domain = domain_match.group(1)
+
+                    # Validate URL
+                    parsed_url = urlparse(url)
+                    if parsed_url.scheme != "https":
+                        results.append({"broker_name": em["broker_name"], "subject": em["subject"], "url": url, "success": False})
+                        continue
+                    hostname = parsed_url.hostname or ""
+                    if hostname == "localhost":
+                        results.append({"broker_name": em["broker_name"], "subject": em["subject"], "url": url, "success": False})
+                        continue
+                    if allowed_domain and allowed_domain not in hostname:
+                        results.append({"broker_name": em["broker_name"], "subject": em["subject"], "url": url, "success": False})
+                        continue
+
+                    try:
+                        response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                        await page.wait_for_timeout(2000)
+                        success = response is not None and response.status < 400
+                    except Exception:
+                        success = False
+
+                    results.append({
+                        "broker_name": em["broker_name"],
+                        "subject": em["subject"],
+                        "url": url,
+                        "success": success,
+                    })
+            finally:
+                await browser.close()
+
+    return results
+
+
 @app.command()
 def verify(
     profile: str = typer.Option("default", "--profile", "-p", help="Profile to check verifications for."),
@@ -407,50 +502,29 @@ def verify(
         return
 
     # Build broker_patterns from YAML configs
-    from ghosted.brokers.registry import BrokerRegistry
+    from ghosted.brokers.registry import BrokerRegistry, build_broker_patterns
 
     registry = BrokerRegistry(BROKERS_DIR)
     broker_list = registry.load_all()
 
     awaiting_names = {r.broker_name for r in awaiting}
-    broker_patterns: dict[str, dict] = {}
-    for bc in broker_list:
-        if bc.name not in awaiting_names:
-            continue
-        if not bc.requires_email_verification:
-            continue
-        subject_pat = None
-        link_pat = None
-        for step in bc.opt_out_steps:
-            if step.action == "await_email" and step.subject_pattern:
-                subject_pat = step.subject_pattern
-            if step.action == "click_email_link" and step.link_pattern:
-                link_pat = step.link_pattern
-        if subject_pat:
-            broker_patterns[bc.name] = {"subject": subject_pat, "link_pattern": link_pat or ""}
+    broker_patterns = build_broker_patterns(broker_list, awaiting_names)
 
     if not broker_patterns:
         console.print("[yellow]No broker email patterns found for pending verifications.[/yellow]")
         history.close()
         return
 
-    # Check inbox
-    from ghosted.core.emailer import EmailConfig, check_verification_emails, click_verification_link
-
-    email_config = EmailConfig(
-        imap_host=user_profile.imap_host,
-        imap_port=user_profile.imap_port,
-        smtp_host="",
-        smtp_port=587,
-        email=user_profile.imap_user,
-        password=user_profile.imap_password,
-    )
-
     console.print(f"Checking inbox for verification emails from [bold]{len(broker_patterns)}[/bold] broker(s)...\n")
 
-    found_emails = asyncio.run(check_verification_emails(email_config, broker_patterns))
+    try:
+        results = asyncio.run(_run_verify(user_profile, broker_patterns, headed))
+    except Exception as e:
+        console.print(Panel(f"Failed to check email: {e}", title="IMAP Error", border_style="red"))
+        history.close()
+        raise typer.Exit(1)
 
-    if not found_emails:
+    if not results:
         console.print("[yellow]No verification emails found yet.[/yellow] Check again later.")
         history.close()
         return
@@ -461,46 +535,38 @@ def verify(
     table.add_column("Subject")
     table.add_column("Link")
 
-    for em in found_emails:
-        link_display = "[green]found[/green]" if em["verification_url"] else "[red]not found[/red]"
-        table.add_row(em["broker_name"], em["subject"], link_display)
+    for r in results:
+        link_display = "[green]found[/green]" if r["url"] else "[red]not found[/red]"
+        table.add_row(r["broker_name"], r["subject"], link_display)
 
     console.print(table)
     console.print()
 
-    # Click verification links
+    # Process results
     verified = 0
     failed = 0
-    from datetime import datetime
 
-    for em in found_emails:
-        url = em["verification_url"]
-        if not url:
-            console.print(f"  {em['broker_name']}: [red]no link found in email[/red]")
+    for r in results:
+        if not r["url"]:
+            console.print(f"  {r['broker_name']}: [red]no link found in email[/red]")
             failed += 1
-            continue
-
-        console.print(f"  {em['broker_name']}: clicking verification link...", end=" ")
-        success = asyncio.run(click_verification_link(url, headless=not headed))
-
-        if success:
-            console.print("[green]verified[/green]")
-            # Update removal status
-            removal = history.get_removal_status(em["broker_name"])
+        elif r["success"]:
+            console.print(f"  {r['broker_name']}: [green]verified[/green]")
+            removal = history.get_removal_status(r["broker_name"])
             if removal:
                 removal.status = RemovalStatus.VERIFIED
                 removal.verified_at = datetime.now()
                 history.save_removal(removal)
             verified += 1
         else:
-            console.print("[red]failed[/red]")
+            console.print(f"  {r['broker_name']}: [red]failed[/red]")
             failed += 1
 
     console.print()
     console.print(
         Panel(
             f"[green]{verified}[/green] verified, [red]{failed}[/red] failed, "
-            f"[yellow]{len(awaiting) - len(found_emails)}[/yellow] still pending",
+            f"[yellow]{len(awaiting) - len(results)}[/yellow] still pending",
             title="Verification Summary",
             border_style="green" if verified > 0 else "yellow",
         )
@@ -643,8 +709,14 @@ def configure_email(
         console=console,
     )
 
+    try:
+        imap_port = int(imap_port_str)
+    except ValueError:
+        console.print("[bold red]IMAP port must be a number.[/bold red]")
+        raise typer.Exit(1)
+
     user_profile.imap_host = imap_host or None
-    user_profile.imap_port = int(imap_port_str)
+    user_profile.imap_port = imap_port
     user_profile.imap_user = imap_user or None
     user_profile.imap_password = imap_password or None
 

@@ -8,6 +8,30 @@ import yaml
 from ghosted.models import BrokerConfig, BrokerMethod
 
 
+def build_broker_patterns(broker_list: list[BrokerConfig], awaiting_names: set[str]) -> dict[str, dict]:
+    """Extract email verification patterns from broker configs.
+
+    Returns mapping of broker_name -> {"subject": ..., "link_pattern": ...}
+    for brokers that are awaiting verification and have email patterns configured.
+    """
+    broker_patterns: dict[str, dict] = {}
+    for bc in broker_list:
+        if bc.name not in awaiting_names:
+            continue
+        if not bc.requires_email_verification:
+            continue
+        subject_pat = None
+        link_pat = None
+        for step in bc.opt_out_steps:
+            if step.action == "await_email" and step.subject_pattern:
+                subject_pat = step.subject_pattern
+            if step.action == "click_email_link" and step.link_pattern:
+                link_pat = step.link_pattern
+        if subject_pat:
+            broker_patterns[bc.name] = {"subject": subject_pat, "link_pattern": link_pat or ""}
+    return broker_patterns
+
+
 class BrokerRegistry:
     """Loads broker configs from a directory of YAML files and provides query methods."""
 

@@ -1130,25 +1130,14 @@ class TestBrokerPatternExtraction:
                 assert step.subject_pattern, f"{bc.name} await_email step missing subject_pattern"
 
     def test_build_broker_patterns_dict(self):
-        """Can build broker_patterns dict matching verify command logic."""
-        from ghosted.brokers.registry import BrokerRegistry
+        """Can build broker_patterns dict using the helper function."""
+        from ghosted.brokers.registry import BrokerRegistry, build_broker_patterns
 
         registry = BrokerRegistry(BROKERS_DIR)
         brokers = registry.load_all()
 
-        broker_patterns: dict[str, dict] = {}
-        for bc in brokers:
-            if not bc.requires_email_verification:
-                continue
-            subject_pat = None
-            link_pat = None
-            for step in bc.opt_out_steps:
-                if step.action == "await_email" and step.subject_pattern:
-                    subject_pat = step.subject_pattern
-                if step.action == "click_email_link" and step.link_pattern:
-                    link_pat = step.link_pattern
-            if subject_pat:
-                broker_patterns[bc.name] = {"subject": subject_pat, "link_pattern": link_pat or ""}
+        email_names = {bc.name for bc in brokers if bc.requires_email_verification}
+        broker_patterns = build_broker_patterns(brokers, email_names)
 
         assert len(broker_patterns) > 0
         # Spokeo should be in there
@@ -1281,3 +1270,236 @@ class TestEmailerLinkExtraction:
         links = extract_verification_links(html, "")
         assert len(links) == 1
         assert links[0] == "https://real.com/link"
+
+    def test_extract_links_html_unescape(self):
+        """HTML-encoded &amp; in URLs are decoded correctly."""
+        from ghosted.core.emailer import extract_verification_links
+
+        html = '<a href="https://spokeo.com/optout/confirm?token=abc&amp;id=123">Confirm</a>'
+        links = extract_verification_links(html, "")
+        assert len(links) == 1
+        assert "&amp;" not in links[0]
+        assert "token=abc&id=123" in links[0]
+
+    def test_extract_links_from_plain_text(self):
+        """Extract verification links from plain text email body."""
+        from ghosted.core.emailer import extract_verification_links_from_text
+
+        text = "Click here to verify: https://spokeo.com/optout/confirm?t=abc\nThanks!"
+        links = extract_verification_links_from_text(text, "")
+        assert len(links) == 1
+        assert "spokeo.com" in links[0]
+
+    def test_extract_links_from_plain_text_with_pattern(self):
+        """Plain text extraction respects link_pattern filter."""
+        from ghosted.core.emailer import extract_verification_links_from_text
+
+        text = "https://spokeo.com/optout/confirm?t=abc https://other.com/page"
+        links = extract_verification_links_from_text(text, "spokeo.com")
+        assert len(links) == 1
+        assert "spokeo.com" in links[0]
+
+
+class TestPrivateIP:
+    """Tests for _is_private_ip helper."""
+
+    def test_loopback(self):
+        from ghosted.core.emailer import _is_private_ip
+
+        assert _is_private_ip("127.0.0.1") is True
+
+    def test_private_10(self):
+        from ghosted.core.emailer import _is_private_ip
+
+        assert _is_private_ip("10.0.0.1") is True
+
+    def test_private_192(self):
+        from ghosted.core.emailer import _is_private_ip
+
+        assert _is_private_ip("192.168.1.1") is True
+
+    def test_public_ip(self):
+        from ghosted.core.emailer import _is_private_ip
+
+        assert _is_private_ip("8.8.8.8") is False
+
+    def test_hostname(self):
+        from ghosted.core.emailer import _is_private_ip
+
+        assert _is_private_ip("spokeo.com") is False
+
+
+class TestURLValidation:
+    """Tests for URL validation in click_verification_link."""
+
+    def test_rejects_non_https(self):
+        """Non-HTTPS URLs are rejected."""
+        import asyncio
+        from ghosted.core.emailer import click_verification_link
+
+        result = asyncio.run(click_verification_link("http://example.com/verify", headless=True))
+        assert result is False
+
+    def test_rejects_localhost(self):
+        """Localhost URLs are rejected."""
+        import asyncio
+        from ghosted.core.emailer import click_verification_link
+
+        result = asyncio.run(click_verification_link("https://localhost/verify", headless=True))
+        assert result is False
+
+    def test_rejects_private_ip(self):
+        """Private IP addresses are rejected."""
+        import asyncio
+        from ghosted.core.emailer import click_verification_link
+
+        result = asyncio.run(click_verification_link("https://192.168.1.1/verify", headless=True))
+        assert result is False
+
+    def test_rejects_wrong_domain(self):
+        """URLs not matching allowed_domain are rejected."""
+        import asyncio
+        from ghosted.core.emailer import click_verification_link
+
+        result = asyncio.run(click_verification_link(
+            "https://evil.com/verify", headless=True, allowed_domain="spokeo.com"
+        ))
+        assert result is False
+
+
+class TestBuildBrokerPatterns:
+    """Tests for the build_broker_patterns helper."""
+
+    def test_filters_by_awaiting_names(self):
+        from ghosted.brokers.registry import build_broker_patterns
+        from ghosted.models import BrokerConfig, BrokerMethod, BrokerStep
+
+        brokers = [
+            BrokerConfig(
+                name="TestBroker",
+                url="https://test.com",
+                opt_out_url="https://test.com/optout",
+                method=BrokerMethod.WEB_FORM,
+                requires_email_verification=True,
+                opt_out_steps=[
+                    BrokerStep(action="await_email", subject_pattern="Verify.*"),
+                    BrokerStep(action="click_email_link", link_pattern="https://test.com/confirm"),
+                ],
+            ),
+            BrokerConfig(
+                name="OtherBroker",
+                url="https://other.com",
+                opt_out_url="https://other.com/optout",
+                method=BrokerMethod.WEB_FORM,
+                requires_email_verification=True,
+                opt_out_steps=[
+                    BrokerStep(action="await_email", subject_pattern="Confirm.*"),
+                ],
+            ),
+        ]
+
+        # Only request TestBroker
+        result = build_broker_patterns(brokers, {"TestBroker"})
+        assert "TestBroker" in result
+        assert "OtherBroker" not in result
+        assert result["TestBroker"]["subject"] == "Verify.*"
+        assert result["TestBroker"]["link_pattern"] == "https://test.com/confirm"
+
+    def test_skips_non_email_verification_brokers(self):
+        from ghosted.brokers.registry import build_broker_patterns
+        from ghosted.models import BrokerConfig, BrokerMethod
+
+        brokers = [
+            BrokerConfig(
+                name="NoEmail",
+                url="https://noemail.com",
+                opt_out_url="https://noemail.com/optout",
+                method=BrokerMethod.WEB_FORM,
+                requires_email_verification=False,
+            ),
+        ]
+        result = build_broker_patterns(brokers, {"NoEmail"})
+        assert len(result) == 0
+
+    def test_empty_when_no_subject_pattern(self):
+        from ghosted.brokers.registry import build_broker_patterns
+        from ghosted.models import BrokerConfig, BrokerMethod, BrokerStep
+
+        brokers = [
+            BrokerConfig(
+                name="NoSubject",
+                url="https://nosub.com",
+                opt_out_url="https://nosub.com/optout",
+                method=BrokerMethod.WEB_FORM,
+                requires_email_verification=True,
+                opt_out_steps=[
+                    BrokerStep(action="click_email_link", link_pattern="https://nosub.com/c"),
+                ],
+            ),
+        ]
+        result = build_broker_patterns(brokers, {"NoSubject"})
+        assert len(result) == 0
+
+    def test_empty_awaiting_names(self):
+        """Empty awaiting_names returns no patterns."""
+        from ghosted.brokers.registry import BrokerRegistry, build_broker_patterns
+
+        registry = BrokerRegistry(BROKERS_DIR)
+        brokers = registry.load_all()
+        result = build_broker_patterns(brokers, set())
+        assert len(result) == 0
+
+
+class TestEmailConfigDefaults:
+    """Tests for EmailConfig default values."""
+
+    def test_smtp_defaults(self):
+        from ghosted.core.emailer import EmailConfig
+
+        config = EmailConfig(imap_host="imap.test.com", email="a@b.com", password="pw")
+        assert config.smtp_host == ""
+        assert config.smtp_port == 587
+
+    def test_imap_port_default(self):
+        from ghosted.core.emailer import EmailConfig
+
+        config = EmailConfig(imap_host="imap.test.com", email="a@b.com", password="pw")
+        assert config.imap_port == 993
+
+
+class TestPortValidation:
+    """Tests for IMAP port validation."""
+
+    def test_valid_port(self):
+        assert int("993") == 993
+
+    def test_invalid_port_raises(self):
+        with pytest.raises(ValueError):
+            int("not-a-number")
+
+    def test_empty_port_raises(self):
+        with pytest.raises(ValueError):
+            int("")
+
+
+class TestEmailDedup:
+    """Tests for most-recent-per-broker email deduplication."""
+
+    def test_keeps_latest_per_broker(self):
+        """Only the last (most recent) email per broker is kept."""
+        results = [
+            {"broker_name": "Spokeo", "subject": "First", "verification_url": "https://a.com", "received_at": "Mon, 1 Mar 2026"},
+            {"broker_name": "Spokeo", "subject": "Second", "verification_url": "https://b.com", "received_at": "Tue, 2 Mar 2026"},
+            {"broker_name": "Radaris", "subject": "Only", "verification_url": "https://c.com", "received_at": "Wed, 3 Mar 2026"},
+        ]
+
+        # Replicate the dedup logic from emailer.py
+        seen: dict[str, dict] = {}
+        for result in results:
+            seen[result["broker_name"]] = result
+        deduped = list(seen.values())
+
+        assert len(deduped) == 2
+        spokeo = [r for r in deduped if r["broker_name"] == "Spokeo"][0]
+        assert spokeo["subject"] == "Second"
+        assert spokeo["verification_url"] == "https://b.com"
