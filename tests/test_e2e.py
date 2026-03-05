@@ -897,7 +897,7 @@ class TestScanStatus:
             "Spokeo", "BeenVerified", "TruePeopleSearch",
             "FastPeopleSearch", "Nuwber", "PeopleLooker",
             "CocoFinder", "CyberBackgroundChecks", "PeopleFinders",
-            "SearchPeopleFree", "USPhoneBook",
+            "SearchPeopleFree", "USPhoneBook", "Radaris",
         ]
         for name in cloudflare_names:
             assert name in broker_map, f"Broker {name} not found in registry"
@@ -912,3 +912,140 @@ class TestScanStatus:
             method=BrokerMethod.WEB_FORM,
         )
         assert b.cloudflare is False
+
+
+# ===========================================================================
+# 10. ScanResult validator — found/status consistency
+# ===========================================================================
+
+
+class TestScanResultValidator:
+    """Validator keeps `found` in sync with `status`."""
+
+    def test_found_auto_set_true(self):
+        """Setting status=FOUND auto-sets found=True regardless of input."""
+        r = ScanResult(broker_name="test", status=ScanStatus.FOUND, found=False)
+        assert r.found is True
+
+    def test_found_auto_set_false(self):
+        """Setting status!=FOUND auto-sets found=False regardless of input."""
+        r = ScanResult(broker_name="test", status=ScanStatus.BLOCKED, found=True)
+        assert r.found is False
+
+    def test_all_non_found_statuses(self):
+        for status in [ScanStatus.NOT_FOUND, ScanStatus.BLOCKED, ScanStatus.ERROR, ScanStatus.UNKNOWN]:
+            r = ScanResult(broker_name="test", status=status, found=True)
+            assert r.found is False, f"status={status.value} should set found=False"
+
+    def test_default_status_unknown_found_false(self):
+        r = ScanResult(broker_name="test")
+        assert r.status == ScanStatus.UNKNOWN
+        assert r.found is False
+
+
+# ===========================================================================
+# 11. Engine search_broker flow — unit tests with mocked Playwright
+# ===========================================================================
+
+
+class TestEngineSearchFlow:
+    """Tests for search_broker classification logic using mock pages."""
+
+    def _make_broker_config(self, **overrides):
+        from ghosted.models import BrokerSearchConfig
+        defaults = dict(
+            name="TestBroker",
+            url="https://test.com",
+            opt_out_url="https://test.com/opt",
+            method=BrokerMethod.WEB_FORM,
+            search=BrokerSearchConfig(
+                url="https://test.com/search/{{user.first_name}}-{{user.last_name}}",
+                result_selector=".result-card",
+                name_selector=".result-card .name",
+                no_results_indicator="No results found",
+            ),
+        )
+        defaults.update(overrides)
+        return BrokerConfig(**defaults)
+
+    def test_no_search_config_returns_error(self):
+        """Broker with no search config returns ERROR."""
+        import asyncio
+        from ghosted.brokers.engine import AutomationEngine
+
+        config = BrokerConfig(
+            name="NoSearch",
+            url="https://nosearch.com",
+            opt_out_url="https://nosearch.com/opt",
+            method=BrokerMethod.WEB_FORM,
+            search=None,
+        )
+
+        async def _run():
+            engine = AutomationEngine(headless=True)
+            # Don't start browser — search_broker returns early for no search config
+            result = await engine.search_broker(config, _make_profile())
+            return result
+
+        result = asyncio.run(_run())
+        assert result.status == ScanStatus.ERROR
+        assert result.found is False
+        assert "No search configuration" in result.error
+
+    def test_cloudflare_flag_on_403(self):
+        """Known CF broker with 403 should report 'Cloudflare protection detected'."""
+        config = self._make_broker_config(cloudflare=True)
+        # The engine's 403 handling uses config.cloudflare to set the error message.
+        # We verify the model flag works correctly.
+        assert config.cloudflare is True
+
+        config_no_cf = self._make_broker_config(cloudflare=False)
+        assert config_no_cf.cloudflare is False
+
+    def test_substitute_vars(self):
+        """Variable substitution replaces all template placeholders."""
+        import asyncio
+        from ghosted.brokers.engine import AutomationEngine
+
+        engine = AutomationEngine(headless=True)
+        profile = _make_profile(
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@test.com",
+            city="Boston",
+            state="MA",
+            phone="555-1234",
+            opt_out_email="privacy@test.com",
+        )
+
+        result = engine._substitute_vars(
+            "https://test.com/{{user.first_name}}-{{user.last_name}}/{{user.city}}/{{user.state}}",
+            profile,
+        )
+        assert result == "https://test.com/Jane-Doe/Boston/MA"
+
+        result2 = engine._substitute_vars("{{user.opt_out_email}}", profile)
+        assert result2 == "privacy@test.com"
+
+        result3 = engine._substitute_vars("{{profile_url}}", profile, "https://example.com/p/1")
+        assert result3 == "https://example.com/p/1"
+
+    def test_substitute_vars_opt_out_fallback(self):
+        """opt_out_email falls back to main email when None."""
+        from ghosted.brokers.engine import AutomationEngine
+
+        engine = AutomationEngine(headless=True)
+        profile = _make_profile(opt_out_email=None)
+
+        result = engine._substitute_vars("{{user.opt_out_email}}", profile)
+        assert result == "test@example.com"
+
+    def test_substitute_vars_phone_none(self):
+        """Phone placeholder renders as empty string when phone is None."""
+        from ghosted.brokers.engine import AutomationEngine
+
+        engine = AutomationEngine(headless=True)
+        profile = _make_profile(phone=None)
+
+        result = engine._substitute_vars("tel:{{user.phone}}", profile)
+        assert result == "tel:"

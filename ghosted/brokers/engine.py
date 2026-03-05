@@ -1,12 +1,11 @@
-"""Playwright-based automation engine for broker search and opt-out."""
+"""Patchright-based automation engine for broker search and opt-out."""
 
 import asyncio
 import random
 from datetime import datetime
 from pathlib import Path
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from playwright_stealth import Stealth
+from patchright.async_api import async_playwright, Browser, BrowserContext, Page
 
 from ghosted.models import (
     BrokerConfig,
@@ -56,21 +55,27 @@ class AutomationEngine:
 
     def __init__(self, headless: bool = False):
         self.headless = headless
-        self._stealth = Stealth()
         self._playwright_ctx = None
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
 
     async def start(self) -> None:
-        """Launch the Playwright browser with stealth patches."""
-        self._playwright_ctx = self._stealth.use_async(async_playwright())
+        """Launch the Patchright browser with anti-detection patches."""
+        self._playwright_ctx = async_playwright()
         self._playwright = await self._playwright_ctx.__aenter__()
         viewport = random.choice(COMMON_VIEWPORTS)
-        self._browser = await self._playwright.chromium.launch(
-            headless=self.headless,
-            args=STEALTH_ARGS,
-        )
+        try:
+            self._browser = await self._playwright.chromium.launch(
+                headless=self.headless,
+                args=STEALTH_ARGS,
+            )
+        except Exception as e:
+            if "executable doesn't exist" in str(e).lower() or "browsertype.launch" in str(e).lower():
+                raise RuntimeError(
+                    "Patchright browser not installed. Run: patchright install chromium"
+                ) from e
+            raise
         self._context = await self._browser.new_context(
             ignore_https_errors=True,
             viewport=viewport,
@@ -166,12 +171,15 @@ class AutomationEngine:
                 http_status = 200
 
             # Non-CF 403 (IP ban, auth required, etc.)
+            # If the broker is known to use Cloudflare, label it as such even
+            # when the challenge page doesn't match our detection heuristics
             if http_status and http_status == 403:
+                error_msg = "Cloudflare protection detected" if config.cloudflare else f"HTTP {http_status} Forbidden"
                 return ScanResult(
                     broker_name=config.name,
                     status=ScanStatus.BLOCKED,
                     found=False,
-                    error=f"HTTP {http_status} Forbidden",
+                    error=error_msg,
                     page_title=page_title,
                     http_status=http_status,
                 )

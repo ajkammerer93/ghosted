@@ -2,6 +2,7 @@ name: "Radaris"
 url: "https://radaris.com"
 opt_out_url: "https://radaris.com/control/privacy"
 method: "web_form"
+cloudflare: true
 parent_company: null
 captcha: "recaptcha_v2"
 requires_email_verification: true
