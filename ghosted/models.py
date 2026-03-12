@@ -50,6 +50,10 @@ class UserProfile(BaseModel):
     date_of_birth: Optional[str] = None
     previous_addresses: list[str] = Field(default_factory=list)
     opt_out_email: Optional[str] = None
+    imap_host: Optional[str] = None
+    imap_port: int = 993
+    imap_user: Optional[str] = None
+    imap_password: Optional[str] = None
 
 
 class BrokerStep(BaseModel):

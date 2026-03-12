@@ -8,6 +8,7 @@ Open-source personal data removal tool. Scan, remove, and monitor your personal 
 - **Remove** — Automate opt-out requests via web forms, with CAPTCHA handoff and manual-step instructions
 - **Multi-profile** — Manage removals for yourself, spouse, family members — each with its own encrypted vault
 - **Anti-detection** — Patchright (Playwright fork) with patched Chromium to bypass basic bot detection
+- **Verify** — Automatically check your inbox for broker verification emails, click confirmation links via browser
 - **Monitor** — Re-scan and track removal status over time with per-profile SQLite history
 - **Local-first** — All data stays on your machine, encrypted at rest with PBKDF2-SHA256 + Fernet
 - **Extensible** — YAML-based broker configs for easy community contributions
@@ -95,8 +96,14 @@ ghosted remove
 # Remove from a specific broker
 ghosted remove --broker Whitepages
 
-# Check verification email status
+# Add IMAP email config to an existing profile
+ghosted configure-email
+
+# Check for verification emails and click confirmation links
 ghosted verify
+
+# Use headed mode for verification link clicks
+ghosted verify --headed
 
 # View removal status dashboard
 ghosted status
@@ -261,7 +268,7 @@ opt_out_steps:
 
 ```
 ghosted/
-  cli.py              # Typer CLI entry point (init, scan, remove, verify, status, brokers, profiles, destroy-profile)
+  cli.py              # Typer CLI entry point (init, scan, remove, verify, status, brokers, profiles, configure-email, destroy-profile)
   models.py           # Pydantic models (UserProfile, BrokerConfig, ScanResult, ScanStatus, etc.)
   brokers/
     engine.py          # Patchright automation engine with anti-detection
@@ -270,7 +277,7 @@ ghosted/
     scanner.py         # Scan orchestration (iterates brokers, skips disabled/phone-only)
     remover.py         # Removal orchestration (routes by method: web_form, email, phone)
     history.py         # SQLite scan/removal history with auto-migration
-    emailer.py         # IMAP/SMTP email integration (not yet wired into CLI)
+    emailer.py         # IMAP verification email checking and link clicking
   vault/
     store.py           # Encrypted profile storage (per-profile subdirectories)
     crypto.py          # PBKDF2-SHA256 key derivation + Fernet encryption
@@ -282,7 +289,7 @@ ghosted/
     captcha.py         # CAPTCHA detection helpers
 brokers/               # YAML broker configs (20 files)
 tests/
-  test_e2e.py          # 70 end-to-end tests
+  test_e2e.py          # 106 end-to-end tests
 ```
 
 ## Troubleshooting
